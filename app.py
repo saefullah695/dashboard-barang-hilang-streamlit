@@ -1089,7 +1089,8 @@ def configure_gemini():
     try:
         api_key = st.secrets["gemini"]["api_key"]
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        # Menggunakan model gemini-2.0-flash yang Anda sebutkan
+        model = genai.GenerativeModel('gemini-2.0-flash')
         return model
     except Exception as e:
         st.error(f"Gagal mengkonfigurasi Gemini API: {e}")
