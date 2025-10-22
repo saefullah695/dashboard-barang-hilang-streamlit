@@ -72,31 +72,62 @@ def create_top_products_chart(df):
     return fig
 
 def create_trend_chart(df):
-    """Membuat grafik tren varians harian dengan moving average."""
-    daily_trend = df.groupby(df['Tanggal Stock Opname'].dt.date)['Selisih Value (Rp)'].sum().reset_index()
-    daily_trend['Moving Average (7 Hari)'] = daily_trend['Selisih Value (Rp)'].rolling(window=7).mean()
+    """Membuat grafik tren varians yang adaptif (harian atau bulanan) berdasarkan data."""
+    if df.empty:
+        return go.Figure().add_annotation(text="Tidak ada data untuk ditampilkan.", xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False)
+
+    # Tentukan granularity berdasarkan rentang data
+    min_date = df['Tanggal Stock Opname'].min()
+    max_date = df['Tanggal Stock Opname'].max()
     
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=daily_trend['Tanggal Stock Opname'], 
-        y=daily_trend['Selisih Value (Rp)'], 
-        mode='lines+markers',
-        name='Varians Harian',
-        line=dict(color=COLOR_PRIMARY)
-    ))
-    fig.add_trace(go.Scatter(
-        x=daily_trend['Tanggal Stock Opname'], 
-        y=daily_trend['Moving Average (7 Hari)'], 
-        mode='lines',
-        name='Rata-rata Bergerak (7 Hari)',
-        line=dict(color='orange', width=3)
-    ))
-    fig.update_layout(
-        title='<b>Tren Varians Nilai Harian</b>',
-        xaxis_title='Tanggal',
-        yaxis_title='Total Varians Nilai (Rp)',
-        title_x=0.5
-    )
+    # Jika data hanya dalam satu hari, tampilkan pesan
+    if min_date.date() == max_date.date():
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Data hanya tersedia untuk satu hari: <b>{min_date.strftime('%d %B %Y')}</b><br>Tidak ada tren yang dapat ditampilkan.",
+            xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False, font=dict(size=16)
+        )
+        return fig
+
+    # Jika data kurang dari 45 hari, gunakan granularity harian
+    if (max_date - min_date).days < 45:
+        trend_data = df.groupby(df['Tanggal Stock Opname'].dt.date)['Selisih Value (Rp)'].sum().reset_index()
+        trend_data['Moving Average (7 Hari)'] = trend_data['Selisih Value (Rp)'].rolling(window=7, min_periods=1).mean()
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=trend_data['Tanggal Stock Opname'], 
+            y=trend_data['Selisih Value (Rp)'], 
+            mode='lines+markers',
+            name='Varians Harian',
+            line=dict(color=COLOR_PRIMARY)
+        ))
+        fig.add_trace(go.Scatter(
+            x=trend_data['Tanggal Stock Opname'], 
+            y=trend_data['Moving Average (7 Hari)'], 
+            mode='lines',
+            name='Rata-rata Bergerak (7 Hari)',
+            line=dict(color='orange', width=3)
+        ))
+        title = '<b>Tren Varians Nilai Harian</b>'
+        xaxis_title = 'Tanggal'
+    # Jika data lebih dari 45 hari, gunakan granularity bulanan
+    else:
+        trend_data = df.groupby(df['Tanggal Stock Opname'].dt.to_period('M'))['Selisih Value (Rp)'].sum().reset_index()
+        trend_data['Tanggal Stock Opname'] = trend_data['Tanggal Stock Opname'].dt.to_timestamp()
+
+        fig = px.bar(
+            trend_data,
+            x='Tanggal Stock Opname',
+            y='Selisih Value (Rp)',
+            labels={'Tanggal Stock Opname': 'Bulan', 'Selisih Value (Rp)': 'Total Varians Nilai (Rp)'},
+            title='<b>Tren Varians Nilai Bulanan</b>',
+            color_discrete_sequence=[COLOR_PRIMARY]
+        )
+        title = '<b>Tren Varians Nilai Bulanan</b>'
+        xaxis_title = 'Bulan'
+
+    fig.update_layout(title=title, xaxis_title=xaxis_title, yaxis_title='Total Varians Nilai (Rp)', title_x=0.5)
     return fig
 
 def create_tag_analysis_chart(df):
@@ -185,7 +216,7 @@ if spreadsheet_url and sheet_name:
         col1, col2, col3 = st.columns(3)
         col1.metric("Total Varians Kuantitas", f"{total_selisih_qty:,.0f} Pcs", delta=f"{abs(total_selisih_qty):,.0f} Pcs", delta_color=delta_qty_color)
         col2.metric("Total Varians Nilai", f"Rp {total_selisih_value:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."), delta=f"Rp {abs(total_selisih_value):,.0f}".replace(",", "X").replace(".", ",").replace("X", "."), delta_color=delta_value_color)
-        col3.metric("Produk Terdampak", f"{total_produk_terdampak:,.0f} SKU")
+        col3.metric("Produk Terdampak", f"{total_produk_terdampak:,.0f} PLU") # <-- PERUBAHAN DI SINI
 
         # --- Wawasan Cerdas ---
         if not df_filtered.empty:
