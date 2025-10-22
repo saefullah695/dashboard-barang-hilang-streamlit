@@ -202,13 +202,11 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
         inplace=True
     )
 
-    # Normalisasi Tag jika ada
     if "Tag" in df.columns:
         df["Tag"] = df["Tag"].replace("", "Tidak Terdefinisi").fillna("Tidak Terdefinisi")
     else:
         df["Tag"] = "Tidak Terdefinisi"
 
-    # Kolom pembantu
     df["Varians Nilai Absolut"] = df["Selisih Value (Rp)"].abs()
     df["Varians Qty Absolut"] = df["Selisih Qty (Pcs)"].abs()
     df["Arah Varians"] = df["Selisih Value (Rp)"].apply(
@@ -226,6 +224,20 @@ def aggregate_tag_summary(df: pd.DataFrame) -> pd.DataFrame:
         .rename(columns={"sum": "Total Varians", "mean": "Rata-rata Varians", "count": "Jumlah PLU"})
         .sort_values(by="Total Varians", key=lambda x: x.abs(), ascending=False)
     )
+
+# --- PENINGKATAN BARU: Fungsi Deteksi Outlier ---
+@st.cache_data(ttl=600)
+def detect_outliers_iqr(df: pd.DataFrame, column: str) -> pd.DataFrame:
+    """Mendeteksi outlier menggunakan metode IQR."""
+    if column not in df.columns or df.empty:
+        return pd.DataFrame()
+    Q1 = df[column].quantile(0.25)
+    Q3 = df[column].quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+    outliers = df[(df[column] < lower_bound) | (df[column] > upper_bound)]
+    return outliers.sort_values(by=column, ascending=False)
 
 
 def create_top_products_chart(df: pd.DataFrame, metric: str, top_n: int) -> go.Figure:
@@ -442,7 +454,7 @@ def filter_dataframe(
 
     return filtered
 
-
+# --- PENINGKATAN BARU: Fungsi Wawasan yang Lebih Terstruktur ---
 def highlight_insights(df: pd.DataFrame) -> None:
     if df.empty:
         return
@@ -454,15 +466,30 @@ def highlight_insights(df: pd.DataFrame) -> None:
 
     biggest_positive = df.sort_values("Selisih Value (Rp)", ascending=False).head(1)
     biggest_negative = df.sort_values("Selisih Value (Rp)").head(1)
+    
+    # --- PENINGKATAN BARU: Deteksi Outlier ---
+    outliers_value = detect_outliers_iqr(df, "Selisih Value (Rp)")
+    outlier_count = len(outliers_value)
 
-    st.info(
-        f"""
-        🧠 **Wawasan Kilat**
-        - Tag **{top_tag}** menyumbang **{format_currency(top_tag_value)}** ({contribution:.1f}%) dari total varians nilai.
-        - Varians positif terbesar: **{biggest_positive.iloc[0]['DESCP']}** sebesar **{format_currency(biggest_positive.iloc[0]['Selisih Value (Rp)'])}**.
-        - Varians negatif terbesar: **{biggest_negative.iloc[0]['DESCP']}** sebesar **{format_currency(biggest_negative.iloc[0]['Selisih Value (Rp)'])}**.
-        """
-    )
+    # --- PENINGKATAN BARU: Tampilan Wawasan yang Lebih Rapi ---
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"**🏷️ Tag Dominan:** `{top_tag}`")
+        st.markdown(f"Menyumbang **{format_currency(top_tag_value)}** ({contribution:.1f}% dari total)")
+    with col2:
+        st.markdown(f"**📈 Varians Positif Terbesar:** `{biggest_positive.iloc[0]['DESCP']}`")
+        st.markdown(f"Nilai: **{format_currency(biggest_positive.iloc[0]['Selisih Value (Rp)'])}**")
+    
+    st.markdown("---")
+    col3, col4 = st.columns(2)
+    with col3:
+        st.markdown(f"**📉 Varians Negatif Terbesar:** `{biggest_negative.iloc[0]['DESCP']}`")
+        st.markdown(f"Nilai: **{format_currency(biggest_negative.iloc[0]['Selisih Value (Rp)'])}**")
+    with col4:
+        st.markdown(f"**🚨 Data Pencilan (Outlier):** `{outlier_count}` produk")
+        if outlier_count > 0:
+            with st.expander("Lihat outlier"):
+                st.dataframe(outliers_value[["PLU", "DESCP", "Selisih Value (Rp)"]], use_container_width=True)
 
 
 # =========================================================
@@ -489,6 +516,12 @@ with st.sidebar:
         horizontal=True
     )
     top_n = st.slider("Tampilkan Top Produk", min_value=5, max_value=30, value=10, step=1)
+    
+    # --- PENINGKATAN BARU: Tombol Reset Filter ---
+    st.markdown("---")
+    if st.button("🔄 Reset Semua Filter", use_container_width=True):
+        # Ini akan mereset widget ke nilai defaultnya
+        st.rerun()
 
 
 # =========================================================
@@ -516,23 +549,27 @@ available_tags_display = ["Semua"] + available_tags
 
 directions = ["Semua", "Positif", "Negatif", "Netral"]
 
+# --- PENINGKATAN BARU: Menggunakan key untuk manajemen state filter ---
 with st.sidebar:
     st.subheader("🧮 Filter")
     selected_date_range = st.date_input(
         "Rentang Tanggal",
         value=(min_date, max_date),
         min_value=min_date,
-        max_value=max_date
+        max_value=max_date,
+        key="date_range"
     )
     selected_tags = st.multiselect(
         "Filter Tag",
         options=available_tags_display,
-        default=["Semua"] if "Semua" in available_tags_display else []
+        default=["Semua"] if "Semua" in available_tags_display else [],
+        key="tags"
     )
     selected_direction = st.multiselect(
         "Arah Varians",
         options=directions,
-        default=["Semua"]
+        default=["Semua"],
+        key="direction"
     )
 
 filtered_df = filter_dataframe(
@@ -543,7 +580,7 @@ filtered_df = filter_dataframe(
 )
 
 if filtered_df.empty:
-    st.warning("Filter saat ini tidak menghasilkan data. Sesuaikan parameter filter Anda.")
+    st.warning("Filter saat ini tidak menghasilkan data. Sesuaikan parameter filter Anda atau gunakan tombol 'Reset Semua Filter'.")
     st.stop()
 
 # =========================================================
@@ -591,13 +628,27 @@ st.divider()
 # =========================================================
 # -------------------- VISUALISASI ------------------------
 # =========================================================
-tab_produk, tab_tren, tab_tag, tab_mendalam, tab_treemap = st.tabs([
-    "📊 Analisis Produk",
-    "📈 Tren Waktu",
-    "🏷️ Analisis Kategori",
-    "🔍 Scatter Varians",
-    "🗺️ Treemap"
+# --- PENINGKATAN BARU: Menambahkan Tab Data Profiler ---
+tab_profiler, tab_produk, tab_tren, tab_tag, tab_mendalam, tab_treemap = st.tabs([
+    "📊 Data Profiler", "📊 Analisis Produk", "📈 Tren Waktu", "🏷️ Analisis Kategori", "🔍 Scatter Varians", "🗺️ Treemap"
 ])
+
+with tab_profiler:
+    st.subheader("📊 Statistik Dasar Dataset")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Baris", f"{filtered_df.shape[0]:,}")
+        st.metric("Total Kolom", filtered_df.shape[1])
+    with col2:
+        st.metric("Rentang Tanggal", f"{filtered_df['Tanggal Stock Opname'].min().date()} s/d {filtered_df['Tanggal Stock Opname'].max().date()}")
+        st.metric("Jumlah Tag Unik", filtered_df['Tag'].nunique())
+    with col3:
+        st.metric("PLU Unik", filtered_df['PLU'].nunique())
+        st.metric("Memori Usage", f"{filtered_df.memory_usage(deep=True).sum() / 1024:.2f} KB")
+    
+    st.markdown("---")
+    st.subheader("Tipe Data Kolom")
+    st.dataframe(filtered_df.dtypes.to_frame('Tipe Data'), use_container_width=True)
 
 with tab_produk:
     st.plotly_chart(create_top_products_chart(filtered_df, metric_selection, top_n), use_container_width=True)
