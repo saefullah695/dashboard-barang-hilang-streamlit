@@ -4,3 +4,4 @@ gspread
 gspread-dataframe
 plotly
 oauth2client
+statsmodels
