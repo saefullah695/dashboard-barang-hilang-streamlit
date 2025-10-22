@@ -8,6 +8,13 @@ import plotly.graph_objects as go
 import plotly.io as pio
 from datetime import datetime
 from typing import Optional, Tuple, List
+import numpy as np
+from scipy import stats
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+import base64
+from io import BytesIO
 
 # =========================================================
 # ------------------- KONFIGURASI AWAL --------------------
@@ -272,6 +279,54 @@ h1, h2, h3, h4, h5, h6 {
 [data-testid="stDataFrame"] div[role="table"] {
     border-radius: 0;
 }
+
+.chart-container {
+    background: var(--color-card);
+    border-radius: var(--radius);
+    border: 1px solid var(--color-border);
+    padding: 1.2rem;
+    margin-bottom: 1.5rem;
+    backdrop-filter: blur(var(--blur));
+    box-shadow: 0 20px 45px -25px rgba(15, 23, 42, 0.9);
+}
+
+.correlation-matrix {
+    background: var(--color-card);
+    border-radius: var(--radius);
+    border: 1px solid var(--color-border);
+    padding: 1.2rem;
+    margin-bottom: 1.5rem;
+    backdrop-filter: blur(var(--blur));
+    box-shadow: 0 20px 45px -25px rgba(15, 23, 42, 0.9);
+    overflow: hidden;
+}
+
+.feature-card {
+    background: linear-gradient(160deg, rgba(99,102,241,0.12), rgba(15,23,42,0.6));
+    border-radius: var(--radius);
+    padding: 1.2rem;
+    border: 1px solid var(--color-border);
+    backdrop-filter: blur(var(--blur));
+    margin-bottom: 1rem;
+    transition: var(--transition);
+}
+
+.feature-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(34, 211, 238, 0.55);
+}
+
+.feature-card h4 {
+    color: var(--color-accent);
+    margin-bottom: 0.5rem;
+}
+
+.feature-card p {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 0;
+}
+
 </style>
 """
 
@@ -747,6 +802,268 @@ def highlight_insights(df: pd.DataFrame) -> None:
                 )
 
 # =========================================================
+# ------------------- FUNGSI DATA PROFILING -----------------
+# =========================================================
+def create_distribution_chart(df: pd.DataFrame, column: str) -> go.Figure:
+    fig = go.Figure()
+    
+    # Histogram
+    fig.add_trace(go.Histogram(
+        x=df[column],
+        nbinsx=30,
+        name='Distribusi',
+        marker_color=COLOR_PRIMARY,
+        opacity=0.7
+    ))
+    
+    # Mean line
+    mean_val = df[column].mean()
+    fig.add_vline(
+        x=mean_val, 
+        line_width=2, 
+        line_dash="dash", 
+        line_color=COLOR_ACCENT,
+        annotation_text=f"Mean: {mean_val:.2f}",
+        annotation_position="top right"
+    )
+    
+    # Median line
+    median_val = df[column].median()
+    fig.add_vline(
+        x=median_val, 
+        line_width=2, 
+        line_dash="dash", 
+        line_color=COLOR_WARNING,
+        annotation_text=f"Median: {median_val:.2f}",
+        annotation_position="top left"
+    )
+    
+    fig.update_layout(
+        title=f"<b>Distribusi {column}</b>",
+        xaxis_title=column,
+        yaxis_title="Frekuensi",
+        title_x=0.5,
+        showlegend=False
+    )
+    
+    return fig
+
+def create_box_plot(df: pd.DataFrame, column: str) -> go.Figure:
+    fig = go.Figure()
+    
+    fig.add_trace(go.Box(
+        y=df[column],
+        name=column,
+        marker_color=COLOR_PRIMARY,
+        boxpoints='outliers'
+    ))
+    
+    fig.update_layout(
+        title=f"<b>Box Plot {column}</b>",
+        yaxis_title=column,
+        title_x=0.5,
+        showlegend=False
+    )
+    
+    return fig
+
+def create_correlation_matrix(df: pd.DataFrame) -> go.Figure:
+    # Select only numeric columns
+    numeric_df = df.select_dtypes(include=[np.number])
+    
+    if numeric_df.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Tidak ada kolom numerik untuk analisis korelasi.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title="<b>Matriks Korelasi</b>", title_x=0.5)
+        return fig
+    
+    # Calculate correlation matrix
+    corr_matrix = numeric_df.corr()
+    
+    # Create heatmap
+    fig = go.Figure(data=go.Heatmap(
+        z=corr_matrix.values,
+        x=corr_matrix.columns,
+        y=corr_matrix.columns,
+        colorscale='RdBu',
+        zmid=0,
+        text=corr_matrix.round(2).values,
+        texttemplate="%{text}",
+        textfont={"size": 10},
+        hoverongaps=False
+    ))
+    
+    fig.update_layout(
+        title="<b>Matriks Korelasi</b>",
+        title_x=0.5,
+        width=600,
+        height=500
+    )
+    
+    return fig
+
+def create_data_quality_report(df: pd.DataFrame) -> pd.DataFrame:
+    # Create a data quality report
+    report = pd.DataFrame({
+        'Kolom': df.columns,
+        'Tipe Data': df.dtypes.values,
+        'Total Nilai Non-Null': df.count().values,
+        'Total Nilai Null': df.isnull().sum().values,
+        '% Nilai Null': (df.isnull().sum() / len(df) * 100).round(2).values,
+        'Total Nilai Unik': df.nunique().values,
+        'Nilai Paling Sering': [df[col].mode()[0] if not df[col].mode().empty else '-' for col in df.columns]
+    })
+    
+    return report
+
+def create_feature_importance_chart(df: pd.DataFrame) -> go.Figure:
+    # Simple feature importance based on correlation with target variable
+    target_col = "Selisih Value (Rp)"
+    
+    if target_col not in df.columns:
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Kolom target '{target_col}' tidak ditemukan.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title="<b>Importance Fitur</b>", title_x=0.5)
+        return fig
+    
+    # Select only numeric columns
+    numeric_df = df.select_dtypes(include=[np.number])
+    
+    if target_col not in numeric_df.columns:
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Kolom target '{target_col}' bukan numerik.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title="<b>Importance Fitur</b>", title_x=0.5)
+        return fig
+    
+    # Calculate correlation with target
+    corr_with_target = numeric_df.corr()[target_col].abs().sort_values(ascending=False)
+    
+    # Remove target itself
+    corr_with_target = corr_with_target.drop(target_col)
+    
+    # Create bar chart
+    fig = go.Figure(data=go.Bar(
+        x=corr_with_target.values,
+        y=corr_with_target.index,
+        orientation='h',
+        marker_color=COLOR_PRIMARY
+    ))
+    
+    fig.update_layout(
+        title="<b>Importance Fitur (Korelasi dengan Varians Nilai)</b>",
+        xaxis_title="Korelasi Absolut",
+        yaxis_title="Fitur",
+        title_x=0.5,
+        height=400
+    )
+    
+    return fig
+
+def create_time_series_decomposition(df: pd.DataFrame) -> go.Figure:
+    # Simple time series decomposition
+    if "Tanggal Stock Opname" not in df.columns or "Selisih Value (Rp)" not in df.columns:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Kolom tanggal atau nilai tidak ditemukan.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title="<b>Dekomposisi Time Series</b>", title_x=0.5)
+        return fig
+    
+    # Group by date
+    ts_data = df.groupby(df["Tanggal Stock Opname"].dt.date)["Selisih Value (Rp)"].sum().reset_index()
+    
+    if len(ts_data) < 14:  # Need at least 2 weeks for meaningful decomposition
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Data tidak cukup untuk dekomposisi time series (minimal 14 hari).",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title="<b>Dekomposisi Time Series</b>", title_x=0.5)
+        return fig
+    
+    # Create figure with subplots
+    from plotly.subplots import make_subplots
+    
+    fig = make_subplots(
+        rows=4, cols=1,
+        subplot_titles=("Data Asli", "Tren", "Musiman", "Residual"),
+        vertical_spacing=0.05
+    )
+    
+    # Original data
+    fig.add_trace(
+        go.Scatter(x=ts_data["Tanggal Stock Opname"], y=ts_data["Selisih Value (Rp)"],
+                  mode='lines', name='Data Asli', line=dict(color=COLOR_PRIMARY)),
+        row=1, col=1
+    )
+    
+    # Trend (simple moving average)
+    window = min(7, len(ts_data) // 3)
+    ts_data["Trend"] = ts_data["Selisih Value (Rp)"].rolling(window=window, center=True).mean()
+    fig.add_trace(
+        go.Scatter(x=ts_data["Tanggal Stock Opname"], y=ts_data["Trend"],
+                  mode='lines', name='Tren', line=dict(color=COLOR_ACCENT)),
+        row=2, col=1
+    )
+    
+    # Seasonality (simplified - day of week pattern)
+    if len(ts_data) >= 14:
+        ts_data["DayOfWeek"] = pd.to_datetime(ts_data["Tanggal Stock Opname"]).dt.dayofweek
+        seasonal_pattern = ts_data.groupby("DayOfWeek")["Selisih Value (Rp)"].mean()
+        ts_data["Seasonal"] = ts_data["DayOfWeek"].map(seasonal_pattern)
+        fig.add_trace(
+            go.Scatter(x=ts_data["Tanggal Stock Opname"], y=ts_data["Seasonal"],
+                      mode='lines', name='Musiman', line=dict(color=COLOR_SUCCESS)),
+            row=3, col=1
+        )
+    
+    # Residual
+    if "Seasonal" in ts_data.columns:
+        ts_data["Residual"] = ts_data["Selisih Value (Rp)"] - ts_data["Trend"] - ts_data["Seasonal"]
+    else:
+        ts_data["Residual"] = ts_data["Selisih Value (Rp)"] - ts_data["Trend"]
+    
+    fig.add_trace(
+        go.Scatter(x=ts_data["Tanggal Stock Opname"], y=ts_data["Residual"],
+                  mode='lines', name='Residual', line=dict(color=COLOR_WARNING)),
+        row=4, col=1
+    )
+    
+    fig.update_layout(
+        title="<b>Dekomposisi Time Series Varians Nilai</b>",
+        title_x=0.5,
+        height=800,
+        showlegend=False
+    )
+    
+    return fig
+
+# =========================================================
 # ----------------------- SIDEBAR -------------------------
 # =========================================================
 with st.sidebar:
@@ -908,7 +1225,7 @@ st.divider()
 # -------------------- VISUALISASI ------------------------
 # =========================================================
 tabs = st.tabs([
-    "📊 Data Profiler",
+    "🔍 Analisis Data Mendalam",
     "🏆 Analisis Produk",
     "📈 Tren Waktu",
     "🏷️ Analisis Kategori",
@@ -917,24 +1234,61 @@ tabs = st.tabs([
 ])
 
 with tabs[0]:
-    st.subheader("📊 Statistik Dasar Dataset")
-    col1, col2, col3 = st.columns(3)
+    st.subheader("🔍 Analisis Data Mendalam")
+    
+    # Data Quality Report
+    with st.expander("📋 Laporan Kualitas Data", expanded=True):
+        quality_report = create_data_quality_report(filtered_df)
+        st.dataframe(quality_report, use_container_width=True)
+    
+    # Distribution Charts
+    col1, col2 = st.columns(2)
+    
     with col1:
-        st.metric("Total Baris", f"{filtered_df.shape[0]:,}".replace(",", "."))
-        st.metric("Total Kolom", filtered_df.shape[1])
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.plotly_chart(create_distribution_chart(filtered_df, "Selisih Value (Rp)"), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
     with col2:
-        st.metric(
-            "Rentang Tanggal",
-            f"{filtered_df['Tanggal Stock Opname'].min().date()} s/d {filtered_df['Tanggal Stock Opname'].max().date()}"
-        )
-        st.metric("Jumlah Tag Unik", filtered_df["Tag"].nunique())
-    with col3:
-        st.metric("PLU Unik", filtered_df["PLU"].nunique())
-        mem_usage = filtered_df.memory_usage(deep=True).sum() / 1024
-        st.metric("Penggunaan Memori", f"{mem_usage:.2f} KB")
-    st.markdown("---")
-    st.subheader("Tipe Data Kolom")
-    st.dataframe(filtered_df.dtypes.to_frame("Tipe Data"), use_container_width=True)
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.plotly_chart(create_distribution_chart(filtered_df, "Selisih Qty (Pcs)"), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Box Plots
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.plotly_chart(create_box_plot(filtered_df, "Selisih Value (Rp)"), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.plotly_chart(create_box_plot(filtered_df, "Selisih Qty (Pcs)"), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Correlation Matrix
+    st.markdown('<div class="correlation-matrix">', unsafe_allow_html=True)
+    st.plotly_chart(create_correlation_matrix(filtered_df), use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Feature Importance
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.plotly_chart(create_feature_importance_chart(filtered_df), use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Time Series Decomposition
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    st.plotly_chart(create_time_series_decomposition(filtered_df), use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Statistical Summary
+    with st.expander("📊 Ringkasan Statistik", expanded=False):
+        numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns
+        stats_summary = filtered_df[numeric_cols].describe().T
+        stats_summary['skew'] = filtered_df[numeric_cols].skew()
+        stats_summary['kurtosis'] = filtered_df[numeric_cols].kurtosis()
+        st.dataframe(stats_summary, use_container_width=True)
 
 with tabs[1]:
     st.plotly_chart(create_top_products_chart(filtered_df, metric_selection, top_n), use_container_width=True)
