@@ -803,7 +803,7 @@ st.markdown(
     <div class="hero-card">
         <h1>📈 Dashboard Analisis Varians Stok Opname</h1>
         <p>Menghadirkan visual interaktif dan insight instan untuk memantau dinamika varians stok secara komprehensif.
-        <br/><strong>📍 Lokasi:</strong> 2GC6 BAROS PANDEGLANG</p>
+        <br/><strong>📍 Toko:</strong> 2GC6 BAROS PANDEGLANG</p>
     </div>
     """,
     unsafe_allow_html=True
