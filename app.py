@@ -13,6 +13,8 @@ from scipy import stats
 from plotly.subplots import make_subplots
 import base64
 from io import BytesIO
+import google.generativeai as genai
+import json
 
 # =========================================================
 # ------------------- KONFIGURASI AWAL --------------------
@@ -322,6 +324,27 @@ h1, h2, h3, h4, h5, h6 {
 .feature-card p {
     color: var(--color-text-muted);
     font-size: 0.9rem;
+    margin-bottom: 0;
+}
+
+.ai-response {
+    background: linear-gradient(160deg, rgba(34,211,238,0.12), rgba(15,23,42,0.6));
+    border-radius: var(--radius);
+    border: 1px solid rgba(34,211,238,0.28);
+    padding: 1.2rem;
+    margin-bottom: 1rem;
+    backdrop-filter: blur(var(--blur));
+}
+
+.ai-response h4 {
+    color: var(--color-accent);
+    margin-bottom: 0.5rem;
+}
+
+.ai-response p {
+    color: var(--color-text);
+    font-size: 0.95rem;
+    line-height: 1.6;
     margin-bottom: 0;
 }
 
@@ -1060,6 +1083,124 @@ def create_time_series_decomposition(df: pd.DataFrame) -> go.Figure:
     return fig
 
 # =========================================================
+# ------------------- FUNGSI GEMINI AI --------------------
+# =========================================================
+def configure_gemini():
+    try:
+        api_key = st.secrets["gemini"]["api_key"]
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-pro')
+        return model
+    except Exception as e:
+        st.error(f"Gagal mengkonfigurasi Gemini API: {e}")
+        return None
+
+def generate_data_insights(df: pd.DataFrame, model) -> str:
+    if df.empty or model is None:
+        return "Tidak ada data atau model tidak tersedia."
+    
+    # Prepare data summary
+    total_records = len(df)
+    date_range = f"{df['Tanggal Stock Opname'].min().date()} hingga {df['Tanggal Stock Opname'].max().date()}"
+    total_variance_value = df["Selisih Value (Rp)"].sum()
+    total_variance_qty = df["Selisih Qty (Pcs)"].sum()
+    top_tags = df.groupby("Tag")["Selisih Value (Rp)"].sum().abs().sort_values(ascending=False).head(3).index.tolist()
+    
+    # Get top positive and negative variance products
+    top_positive = df[df["Selisih Value (Rp)"] > 0].sort_values("Selisih Value (Rp)", ascending=False).head(3)
+    top_negative = df[df["Selisih Value (Rp)"] < 0].sort_values("Selisih Value (Rp)").head(3)
+    
+    # Create prompt for Gemini
+    prompt = f"""
+    Analisis data varians stok opname berikut dan berikan insight yang berharga:
+    
+    Ringkasan Data:
+    - Total Records: {total_records}
+    - Periode Data: {date_range}
+    - Total Varians Nilai: {format_currency(total_variance_value)}
+    - Total Varians Kuantitas: {format_quantity(total_variance_qty)} pcs
+    - Top 3 Tag dengan Varians Tertinggi: {', '.join(top_tags)}
+    
+    Produk dengan Varians Positif Tertinggi:
+    {top_positive[['DESCP', 'Selisih Value (Rp)', 'Selisih Qty (Pcs)']].to_string(index=False)}
+    
+    Produk dengan Varians Negatif Terbesar:
+    {top_negative[['DESCP', 'Selisih Value (Rp)', 'Selisih Qty (Pcs)']].to_string(index=False)}
+    
+    Berikan analisis mendalam tentang:
+    1. Pola atau tren yang menonjol dari data varians stok
+    2. Kemungkinan penyebab varians positif dan negatif
+    3. Area yang perlu mendapat perhatian khusus
+    4. Rekomendasi tindakan untuk mengurangi varians negatif
+    5. Strategi untuk memanfaatkan produk dengan varians positif
+    
+    Jawab dalam bahasa Indonesia dengan gaya profesional namun mudah dipahami.
+    """
+    
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Terjadi kesalahan saat menghasilkan insight: {e}"
+
+def answer_data_question(df: pd.DataFrame, question: str, model) -> str:
+    if df.empty or model is None:
+        return "Tidak ada data atau model tidak tersedia."
+    
+    # Prepare data summary
+    data_summary = df.head(10).to_string()
+    
+    # Create prompt for Gemini
+    prompt = f"""
+    Berdasarkan data varians stok opname berikut:
+    
+    {data_summary}
+    
+    Jawab pertanyaan ini dengan bahasa Indonesia: "{question}"
+    
+    Jika jawaban memerlukan analisis lebih dari 10 baris data pertama, berikan jawaban berdasarkan pola umum yang terlihat dari data.
+    """
+    
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Terjadi kesalahan saat menjawab pertanyaan: {e}"
+
+def generate_recommendations(df: pd.DataFrame, model) -> str:
+    if df.empty or model is None:
+        return "Tidak ada data atau model tidak tersedia."
+    
+    # Identify problematic areas
+    negative_variance = df[df["Selisih Value (Rp)"] < 0]
+    outliers = detect_outliers_iqr(df, "Selisih Value (Rp)")
+    
+    # Create prompt for Gemini
+    prompt = f"""
+    Berdasarkan data varians stok opname, berikan rekomendasi bisnis yang spesifik dan actionable:
+    
+    Informasi Penting:
+    - Total produk dengan varians negatif: {len(negative_variance)} dari {len(df)} produk
+    - Total nilai varians negatif: {format_currency(negative_variance['Selisih Value (Rp)'].sum())}
+    - Jumlah outlier yang terdeteksi: {len(outliers)}
+    
+    Berikan 5 rekomendasi prioritas yang dapat diimplementasikan untuk:
+    1. Mengurangi varians stok negatif
+    2. Meningkatkan akurasi stok opname
+    3. Mengoptimalkan proses inventory management
+    4. Mengidentifikasi area yang perlu audit lebih lanjut
+    5. Meningkatkan profitabilitas terkait manajemen stok
+    
+    Jawab dalam bahasa Indonesia dengan format daftar yang jelas dan actionable.
+    """
+    
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Terjadi kesalahan saat menghasilkan rekomendasi: {e}"
+
+# =========================================================
 # ----------------------- SIDEBAR -------------------------
 # =========================================================
 with st.sidebar:
@@ -1132,6 +1273,9 @@ with st.spinner("Memuat dan memproses data dari Google Sheets..."):
 if dataframe is None or dataframe.empty:
     st.error("Tidak ada data yang dapat diproses. Periksa kembali sumber data Anda.")
     st.stop()
+
+# Initialize Gemini model
+gemini_model = configure_gemini()
 
 min_date = dataframe["Tanggal Stock Opname"].min().to_pydatetime()
 max_date = dataframe["Tanggal Stock Opname"].max().to_pydatetime()
@@ -1222,6 +1366,7 @@ st.divider()
 # =========================================================
 tabs = st.tabs([
     "🔍 Analisis Data Mendalam",
+    "🤖 Analisis AI",
     "🏆 Analisis Produk",
     "📈 Tren Waktu",
     "🏷️ Analisis Kategori",
@@ -1287,18 +1432,65 @@ with tabs[0]:
         st.dataframe(stats_summary, use_container_width=True)
 
 with tabs[1]:
-    st.plotly_chart(create_top_products_chart(filtered_df, metric_selection, top_n), use_container_width=True)
+    st.subheader("🤖 Analisis AI dengan Gemini")
+    
+    if gemini_model is None:
+        st.error("Model Gemini tidak tersedia. Pastikan API key sudah dikonfigurasi dengan benar.")
+    else:
+        # AI Insights Section
+        st.markdown("### 🧠 Insight Cerdas dari Data")
+        
+        if st.button("🔍 Generate Insight", type="primary"):
+            with st.spinner("Menganalisis data dengan AI..."):
+                insights = generate_data_insights(filtered_df, gemini_model)
+                
+                st.markdown('<div class="ai-response">', unsafe_allow_html=True)
+                st.markdown(insights)
+                st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Q&A Section
+        st.markdown("### ❓ Tanya Jawab tentang Data")
+        
+        question = st.text_input("Ajukan pertanyaan tentang data varians stok:", 
+                                placeholder="Contoh: Produk apa yang paling sering mengalami varians negatif?")
+        
+        if st.button("Kirim Pertanyaan") and question:
+            with st.spinner("Mencari jawaban..."):
+                answer = answer_data_question(filtered_df, question, gemini_model)
+                
+                st.markdown('<div class="ai-response">', unsafe_allow_html=True)
+                st.markdown(f"**Pertanyaan:** {question}")
+                st.markdown(f"**Jawaban:** {answer}")
+                st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Recommendations Section
+        st.markdown("### 💡 Rekomendasi Bisnis")
+        
+        if st.button("📋 Generate Rekomendasi", type="primary"):
+            with st.spinner("Menghasilkan rekomendasi..."):
+                recommendations = generate_recommendations(filtered_df, gemini_model)
+                
+                st.markdown('<div class="ai-response">', unsafe_allow_html=True)
+                st.markdown(recommendations)
+                st.markdown('</div>', unsafe_allow_html=True)
 
 with tabs[2]:
-    st.plotly_chart(create_trend_chart(filtered_df, metric_selection), use_container_width=True)
+    st.plotly_chart(create_top_products_chart(filtered_df, metric_selection, top_n), use_container_width=True)
 
 with tabs[3]:
-    st.plotly_chart(create_tag_analysis_chart(filtered_df, metric_selection), use_container_width=True)
+    st.plotly_chart(create_trend_chart(filtered_df, metric_selection), use_container_width=True)
 
 with tabs[4]:
-    st.plotly_chart(create_scatter_chart(filtered_df), use_container_width=True)
+    st.plotly_chart(create_tag_analysis_chart(filtered_df, metric_selection), use_container_width=True)
 
 with tabs[5]:
+    st.plotly_chart(create_scatter_chart(filtered_df), use_container_width=True)
+
+with tabs[6]:
     st.plotly_chart(create_treemap_chart(filtered_df), use_container_width=True)
 
 st.divider()
