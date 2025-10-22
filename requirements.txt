@@ -2,6 +2,8 @@ streamlit
 pandas
 gspread
 gspread-dataframe
-plotly
 oauth2client
-statsmodels
+plotly
+numpy
+scipy
+seaborn
