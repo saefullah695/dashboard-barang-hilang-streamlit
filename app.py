@@ -10,9 +10,7 @@ from datetime import datetime
 from typing import Optional, Tuple, List
 import numpy as np
 from scipy import stats
-import seaborn as sns
-import matplotlib.pyplot as plt
-from sklearn.preprocessing import MinMaxScaler
+from plotly.subplots import make_subplots
 import base64
 from io import BytesIO
 
@@ -1007,8 +1005,6 @@ def create_time_series_decomposition(df: pd.DataFrame) -> go.Figure:
         return fig
     
     # Create figure with subplots
-    from plotly.subplots import make_subplots
-    
     fig = make_subplots(
         rows=4, cols=1,
         subplot_titles=("Data Asli", "Tren", "Musiman", "Residual"),
