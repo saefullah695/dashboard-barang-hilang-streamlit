@@ -806,7 +806,7 @@ def render_metric_card(
 
     delta_markup = ""
     if delta_label:
-        delta_markup = f'<div class="metric-delta {delta_class}">{delta_markup}</div>'
+        delta_markup = f'<div class="metric-delta {delta_class}">{delta_label}</div>'
 
     st.markdown(
         f"""
@@ -1701,75 +1701,132 @@ def check_for_alerts(df: pd.DataFrame) -> List[Dict[str, Any]]:
     
     return alerts
 
-# New: Advanced filtering options
+# New: Advanced filtering options - PERBAIKAN UTAMA
 def render_advanced_filters(df: pd.DataFrame) -> Dict[str, Any]:
-    """Render advanced filtering options"""
+    """Render advanced filtering options with robust error handling"""
     with st.expander("🔍 Advanced Filters", expanded=False):
-        # Value range filter - PERBAIKAN DI SINI
-        min_value = float(df["Selisih Value (Rp)"].min())
-        max_value = float(df["Selisih Value (Rp)"].max())
+        # Initialize default values
+        default_filters = {
+            "value_range": (-1000000.0, 1000000.0),
+            "qty_range": (-100, 100),
+            "search_term": "",
+            "sort_by": "Selisih Value (Rp)",
+            "sort_order": "Descending"
+        }
         
-        # Ensure min_value < max_value and both are finite
-        if not np.isfinite(min_value) or not np.isfinite(max_value) or min_value >= max_value:
-            # Set default values if there's an issue with the data
-            min_value = -1000000.0
-            max_value = 1000000.0
+        try:
+            # Value range filter with robust error handling
+            if "Selisih Value (Rp)" in df.columns and not df["Selisih Value (Rp)"].empty:
+                min_value = float(df["Selisih Value (Rp)"].min())
+                max_value = float(df["Selisih Value (Rp)"].max())
+                
+                # Check for valid values
+                if not np.isfinite(min_value) or not np.isfinite(max_value):
+                    min_value, max_value = default_filters["value_range"]
+                elif min_value >= max_value:
+                    # If min >= max, create a reasonable range
+                    center = (min_value + max_value) / 2 if np.isfinite(min_value + max_value) else 0
+                    width = max(abs(center) * 0.5, 1000000)  # At least 1 million range
+                    min_value = center - width
+                    max_value = center + width
+            else:
+                min_value, max_value = default_filters["value_range"]
+            
+            # Round to reasonable values for the slider
+            min_value = round(min_value, -4)  # Round to nearest 10,000
+            max_value = round(max_value, -4)  # Round to nearest 10,000
+            
+            # Ensure we have a reasonable range
+            if max_value - min_value < 10000:
+                min_value -= 5000
+                max_value += 5000
+            
+            # Create the slider with proper error handling
+            try:
+                value_range = st.slider(
+                    "Rentang Varians Nilai (Rp)",
+                    min_value=min_value,
+                    max_value=max_value,
+                    value=(min_value, max_value),
+                    step=10000,
+                    help="Filter berdasarkan rentang nilai varians"
+                )
+            except Exception as e:
+                st.error(f"Error creating value range slider: {str(e)}")
+                value_range = default_filters["value_range"]
+        except Exception as e:
+            st.error(f"Error setting up value range filter: {str(e)}")
+            value_range = default_filters["value_range"]
         
-        # Round to reasonable values for the slider
-        min_value = round(min_value, -4)  # Round to nearest 10,000
-        max_value = round(max_value, -4)  # Round to nearest 10,000
-        
-        # Ensure we have a reasonable range
-        if max_value - min_value < 10000:
-            min_value -= 5000
-            max_value += 5000
-        
-        value_range = st.slider(
-            "Rentang Varians Nilai (Rp)",
-            min_value=min_value,
-            max_value=max_value,
-            value=(min_value, max_value),
-            step=10000
-        )
-        
-        # Quantity range filter
-        min_qty = int(df["Selisih Qty (Pcs)"].min())
-        max_qty = int(df["Selisih Qty (Pcs)"].max())
-        
-        # Ensure min_qty < max_qty and both are finite
-        if not np.isfinite(min_qty) or not np.isfinite(max_qty) or min_qty >= max_qty:
-            # Set default values if there's an issue with the data
-            min_qty = -100
-            max_qty = 100
-        
-        # Ensure we have a reasonable range
-        if max_qty - min_qty < 10:
-            min_qty -= 5
-            max_qty += 5
-        
-        qty_range = st.slider(
-            "Rentang Varians Kuantitas (Pcs)",
-            min_value=min_qty,
-            max_value=max_qty,
-            value=(min_qty, max_qty),
-            step=1
-        )
+        try:
+            # Quantity range filter with robust error handling
+            if "Selisih Qty (Pcs)" in df.columns and not df["Selisih Qty (Pcs)"].empty:
+                min_qty = int(df["Selisih Qty (Pcs)"].min())
+                max_qty = int(df["Selisih Qty (Pcs)"].max())
+                
+                # Check for valid values
+                if not np.isfinite(min_qty) or not np.isfinite(max_qty):
+                    min_qty, max_qty = default_filters["qty_range"]
+                elif min_qty >= max_qty:
+                    # If min >= max, create a reasonable range
+                    center = (min_qty + max_qty) // 2 if (min_qty + max_qty) != 0 else 0
+                    width = max(abs(center) * 2, 100)  # At least 100 range
+                    min_qty = center - width
+                    max_qty = center + width
+            else:
+                min_qty, max_qty = default_filters["qty_range"]
+            
+            # Ensure we have a reasonable range
+            if max_qty - min_qty < 10:
+                min_qty -= 5
+                max_qty += 5
+            
+            # Create the slider with proper error handling
+            try:
+                qty_range = st.slider(
+                    "Rentang Varians Kuantitas (Pcs)",
+                    min_value=min_qty,
+                    max_value=max_qty,
+                    value=(min_qty, max_qty),
+                    step=1,
+                    help="Filter berdasarkan rentang kuantitas varians"
+                )
+            except Exception as e:
+                st.error(f"Error creating quantity range slider: {str(e)}")
+                qty_range = default_filters["qty_range"]
+        except Exception as e:
+            st.error(f"Error setting up quantity range filter: {str(e)}")
+            qty_range = default_filters["qty_range"]
         
         # Product search
-        search_term = st.text_input("Cari Produk (PLU atau Deskripsi)")
+        try:
+            search_term = st.text_input("Cari Produk (PLU atau Deskripsi)", help="Cari berdasarkan PLU atau nama produk")
+        except Exception as e:
+            st.error(f"Error creating search input: {str(e)}")
+            search_term = ""
         
         # Sort options
-        sort_by = st.selectbox(
-            "Urutkan berdasarkan",
-            options=["Tanggal Stock Opname", "Selisih Value (Rp)", "Selisih Qty (Pcs)", "Varians Nilai Absolut"],
-            index=1
-        )
+        try:
+            sort_by = st.selectbox(
+                "Urutkan berdasarkan",
+                options=["Tanggal Stock Opname", "Selisih Value (Rp)", "Selisih Qty (Pcs)", "Varians Nilai Absolut"],
+                index=1,
+                help="Pilih kolom untuk pengurutan data"
+            )
+        except Exception as e:
+            st.error(f"Error creating sort selectbox: {str(e)}")
+            sort_by = default_filters["sort_by"]
         
-        sort_order = st.radio(
-            "Urutan",
-            options=["Ascending", "Descending"],
-            horizontal=True
-        )
+        try:
+            sort_order = st.radio(
+                "Urutan",
+                options=["Ascending", "Descending"],
+                horizontal=True,
+                index=1 if default_filters["sort_order"] == "Descending" else 0
+            )
+        except Exception as e:
+            st.error(f"Error creating sort order radio: {str(e)}")
+            sort_order = default_filters["sort_order"]
         
         return {
             "value_range": value_range,
@@ -1784,47 +1841,54 @@ def apply_advanced_filters(df: pd.DataFrame, filters: Dict[str, Any]) -> pd.Data
     """Apply advanced filters to the dataframe"""
     filtered_df = df.copy()
     
-    # Apply value range filter
-    min_val, max_val = filters["value_range"]
-    filtered_df = filtered_df[
-        (filtered_df["Selisih Value (Rp)"] >= min_val) &
-        (filtered_df["Selisih Value (Rp)"] <= max_val)
-    ]
-    
-    # Apply quantity range filter
-    min_qty, max_qty = filters["qty_range"]
-    filtered_df = filtered_df[
-        (filtered_df["Selisih Qty (Pcs)"] >= min_qty) &
-        (filtered_df["Selisih Qty (Pcs)"] <= max_qty)
-    ]
-    
-    # Apply search filter
-    if filters["search_term"]:
-        search_term = filters["search_term"].lower()
+    try:
+        # Apply value range filter
+        min_val, max_val = filters["value_range"]
         filtered_df = filtered_df[
-            filtered_df["PLU"].astype(str).str.lower().str.contains(search_term) |
-            filtered_df["DESCP"].astype(str).str.lower().str.contains(search_term)
+            (filtered_df["Selisih Value (Rp)"] >= min_val) &
+            (filtered_df["Selisih Value (Rp)"] <= max_val)
         ]
-    
-    # Apply sorting
-    sort_by = filters["sort_by"]
-    ascending = filters["sort_order"] == "Ascending"
-    filtered_df = filtered_df.sort_values(by=sort_by, ascending=ascending)
+        
+        # Apply quantity range filter
+        min_qty, max_qty = filters["qty_range"]
+        filtered_df = filtered_df[
+            (filtered_df["Selisih Qty (Pcs)"] >= min_qty) &
+            (filtered_df["Selisih Qty (Pcs)"] <= max_qty)
+        ]
+        
+        # Apply search filter
+        if filters["search_term"]:
+            search_term = filters["search_term"].lower()
+            filtered_df = filtered_df[
+                filtered_df["PLU"].astype(str).str.lower().str.contains(search_term) |
+                filtered_df["DESCP"].astype(str).str.lower().str.contains(search_term)
+            ]
+        
+        # Apply sorting
+        sort_by = filters["sort_by"]
+        ascending = filters["sort_order"] == "Ascending"
+        filtered_df = filtered_df.sort_values(by=sort_by, ascending=ascending)
+    except Exception as e:
+        st.error(f"Error applying filters: {str(e)}")
+        return df  # Return original dataframe if filtering fails
     
     return filtered_df
 
 # New: Export functionality
 def export_data(df: pd.DataFrame, format_type: str = "csv") -> bytes:
     """Export data in different formats"""
-    if format_type == "csv":
-        return df.to_csv(index=False).encode('utf-8')
-    elif format_type == "excel":
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Stock Variance')
-        return output.getvalue()
-    elif format_type == "json":
-        return df.to_json(orient='records').encode('utf-8')
+    try:
+        if format_type == "csv":
+            return df.to_csv(index=False).encode('utf-8')
+        elif format_type == "excel":
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Stock Variance')
+            return output.getvalue()
+        elif format_type == "json":
+            return df.to_json(orient='records').encode('utf-8')
+    except Exception as e:
+        st.error(f"Error exporting data: {str(e)}")
     return b""
 
 # =========================================================
@@ -2007,11 +2071,15 @@ filtered_df = filter_dataframe(
     selected_direction=selected_direction
 )
 
-# Advanced Filters - PERBAIKAN DI SINI
+# Advanced Filters - PERBAIKAN UTAMA
 # Cek apakah filtered_df kosong sebelum membuat advanced filters
 if not filtered_df.empty:
-    advanced_filters = render_advanced_filters(filtered_df)
-    filtered_df = apply_advanced_filters(filtered_df, advanced_filters)
+    try:
+        advanced_filters = render_advanced_filters(filtered_df)
+        filtered_df = apply_advanced_filters(filtered_df, advanced_filters)
+    except Exception as e:
+        st.error(f"Error in advanced filters: {str(e)}")
+        # Continue with the filtered_df without advanced filters
 else:
     st.warning("⚠️ Filter tidak menghasilkan data. Silakan sesuaikan parameter filter.")
     st.stop()
