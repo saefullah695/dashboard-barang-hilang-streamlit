@@ -806,7 +806,7 @@ def render_metric_card(
 
     delta_markup = ""
     if delta_label:
-        delta_markup = f'<div class="metric-delta {delta_class}">{delta_label}</div>'
+        delta_markup = f'<div class="metric-delta {delta_class}">{delta_markup}</div>'
 
     st.markdown(
         f"""
@@ -1705,21 +1705,48 @@ def check_for_alerts(df: pd.DataFrame) -> List[Dict[str, Any]]:
 def render_advanced_filters(df: pd.DataFrame) -> Dict[str, Any]:
     """Render advanced filtering options"""
     with st.expander("🔍 Advanced Filters", expanded=False):
-        # Value range filter
+        # Value range filter - PERBAIKAN DI SINI
         min_value = float(df["Selisih Value (Rp)"].min())
         max_value = float(df["Selisih Value (Rp)"].max())
+        
+        # Ensure min_value < max_value and both are finite
+        if not np.isfinite(min_value) or not np.isfinite(max_value) or min_value >= max_value:
+            # Set default values if there's an issue with the data
+            min_value = -1000000.0
+            max_value = 1000000.0
+        
+        # Round to reasonable values for the slider
+        min_value = round(min_value, -4)  # Round to nearest 10,000
+        max_value = round(max_value, -4)  # Round to nearest 10,000
+        
+        # Ensure we have a reasonable range
+        if max_value - min_value < 10000:
+            min_value -= 5000
+            max_value += 5000
+        
         value_range = st.slider(
             "Rentang Varians Nilai (Rp)",
             min_value=min_value,
             max_value=max_value,
             value=(min_value, max_value),
-            step=10000,
-            format="Rp %.0f"
+            step=10000
         )
         
         # Quantity range filter
         min_qty = int(df["Selisih Qty (Pcs)"].min())
         max_qty = int(df["Selisih Qty (Pcs)"].max())
+        
+        # Ensure min_qty < max_qty and both are finite
+        if not np.isfinite(min_qty) or not np.isfinite(max_qty) or min_qty >= max_qty:
+            # Set default values if there's an issue with the data
+            min_qty = -100
+            max_qty = 100
+        
+        # Ensure we have a reasonable range
+        if max_qty - min_qty < 10:
+            min_qty -= 5
+            max_qty += 5
+        
         qty_range = st.slider(
             "Rentang Varians Kuantitas (Pcs)",
             min_value=min_qty,
@@ -1980,9 +2007,14 @@ filtered_df = filter_dataframe(
     selected_direction=selected_direction
 )
 
-# Advanced Filters
-advanced_filters = render_advanced_filters(filtered_df)
-filtered_df = apply_advanced_filters(filtered_df, advanced_filters)
+# Advanced Filters - PERBAIKAN DI SINI
+# Cek apakah filtered_df kosong sebelum membuat advanced filters
+if not filtered_df.empty:
+    advanced_filters = render_advanced_filters(filtered_df)
+    filtered_df = apply_advanced_filters(filtered_df, advanced_filters)
+else:
+    st.warning("⚠️ Filter tidak menghasilkan data. Silakan sesuaikan parameter filter.")
+    st.stop()
 
 if filtered_df.empty:
     st.warning("⚠️ Filter tidak menghasilkan data. Silakan sesuaikan parameter filter.")
