@@ -1,55 +1,11 @@
-# Core Streamlit
-streamlit>=1.28.0
-
-statsmodels
-
-# Data Processing
-pandas>=2.0.0
-numpy>=1.24.0
-
+streamlit
+pandas
+gspread
+gspread-dataframe
+oauth2client
+plotly
+numpy
+scipy
 streamlit-lottie
-# Google Sheets Integration
-gspread>=5.7.0
-oauth2client>=4.1.3
-
-# Data Visualization
-plotly>=5.15.0
-seaborn>=0.12.0
-
-# Google Gemini AI
-google-generativeai>=0.3.0
-
-# Excel Export
-openpyxl>=3.1.0
-xlsxwriter>=3.1.0
-
-# Date/Time Processing
-python-dateutil>=2.8.0
-
-# HTTP Requests
-requests>=2.31.0
-
-# Scientific Computing
-scipy>=1.10.0
-
-# Logging
-logging>=0.4.9.6
-
-# Type Hints
-typing-extensions>=4.5.0
-
-
-
-# JSON Handling
-jsonschema>=4.17.0
-
-
-
-# Caching
-diskcache>=5.6.0
-
-# Performance Monitoring
-psutil>=5.9.0
-
-# Additional Utilities
-tqdm>=4.65.0
+google-generativeai
+requests
