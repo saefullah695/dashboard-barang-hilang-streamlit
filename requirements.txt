@@ -1,11 +1,12 @@
 streamlit
+plotly==5.22.0
+statsmodels
 pandas
-gspread
-gspread-dataframe
-oauth2client
-plotly
 numpy
 scipy
-streamlit-lottie
+gspread
+gspread_dataframe
+oauth2client
 google-generativeai
+streamlit-lottie
 requests
