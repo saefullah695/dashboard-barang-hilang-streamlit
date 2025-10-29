@@ -13,11 +13,6 @@ from scipy import stats
 from plotly.subplots import make_subplots
 import base64
 from io import BytesIO
-import google.generativeai as genai
-import json
-import time
-from streamlit_lottie import st_lottie
-import requests
 
 # =========================================================
 # ------------------- KONFIGURASI AWAL --------------------
@@ -29,51 +24,50 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Palet warna profesional yang lebih ditingkatkan
-COLOR_PRIMARY = "#4F46E5"     # Indigo
-COLOR_SECONDARY = "#7C3AED"   # Violet
-COLOR_ACCENT = "#06B6D4"      # Cyan
-COLOR_SUCCESS = "#10B981"     # Emerald
-COLOR_WARNING = "#F59E0B"     # Amber
-COLOR_DANGER = "#EF4444"      # Red
-COLOR_INFO = "#3B82F6"        # Blue
-COLOR_BG = "#0F172A"          # Dark Blue
-COLOR_CARD = "rgba(15, 23, 42, 0.75)"
-COLOR_BORDER = "rgba(148, 163, 184, 0.15)"
-COLOR_HOVER = "rgba(99, 102, 241, 0.15)"
+# Palet warna kekinian
+COLOR_PRIMARY = "#6366F1"     # Indigo neon
+COLOR_ACCENT = "#22D3EE"      # Cyan terang
+COLOR_SUCCESS = "#34D399"     # Hijau pastel
+COLOR_WARNING = "#FACC15"     # Kuning keemasan
+COLOR_DANGER = "#F97316"      # Oranye sunset
+COLOR_NEGATIVE = "#FB7185"    # Merah salmon
+COLOR_BG = "#0F172A"          # Biru gelap
+COLOR_CARD = "rgba(15, 23, 42, 0.65)"
+COLOR_BORDER = "rgba(148, 163, 184, 0.28)"
 
 PLOTLY_COLORWAY = [
-    "#4F46E5", "#7C3AED", "#06B6D4", "#10B981", "#F59E0B",
-    "#EF4444", "#3B82F6", "#EC4899", "#8B5CF6", "#14B8A6"
+    "#6366F1", "#22D3EE", "#34D399", "#F97316",
+    "#FACC15", "#A855F7", "#38BDF8", "#FB7185", "#F472B6"
 ]
 
 CUSTOM_CSS = """
 <style>
 :root {
-    --color-primary: #4F46E5;
-    --color-secondary: #7C3AED;
-    --color-accent: #06B6D4;
-    --color-success: #10B981;
-    --color-warning: #F59E0B;
-    --color-danger: #EF4444;
-    --color-info: #3B82F6;
+    --color-primary: #6366F1;
+    --color-accent: #22D3EE;
+    --color-success: #34D399;
+    --color-warning: #FACC15;
+    --color-danger: #F97316;
+    --color-negative: #FB7185;
     --color-bg: #0F172A;
-    --color-bg-secondary: rgba(15, 23, 42, 0.85);
-    --color-card: rgba(15, 23, 42, 0.75);
-    --color-border: rgba(148, 163, 184, 0.15);
+    --color-bg-secondary: rgba(15, 23, 42, 0.75);
+    --color-card: rgba(15, 23, 42, 0.65);
+    --color-border: rgba(148, 163, 184, 0.28);
     --color-text: #E2E8F0;
     --color-text-muted: #94A3B8;
-    --color-highlight: rgba(99, 102, 241, 0.15);
-    --radius: 16px;
-    --blur: 20px;
-    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --color-highlight: rgba(99, 102, 241, 0.22);
+    --radius: 20px;
+    --blur: 22px;
+    --transition: 0.25s ease;
 }
 
 body {
     font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     color: var(--color-text);
-    background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
-    background-attachment: fixed;
+    background: radial-gradient(circle at top left, rgba(99,102,241,0.18), transparent 55%),
+                radial-gradient(circle at top right, rgba(34,211,238,0.18), transparent 55%),
+                radial-gradient(circle at bottom, rgba(251,113,133,0.18), transparent 55%),
+                var(--color-bg);
 }
 
 [data-testid="stAppViewContainer"] {
@@ -81,48 +75,42 @@ body {
 }
 
 section.main > div {
-    padding-top: 1.5rem;
+    padding-top: 1.2rem;
 }
 
 h1, h2, h3, h4, h5, h6 {
     color: var(--color-text) !important;
-    font-weight: 700;
-    letter-spacing: -0.025em;
+    letter-spacing: 0.01em;
 }
 
 .stTabs [role="tablist"] {
-    gap: 0.5rem;
-    background: rgba(15, 23, 42, 0.5);
-    padding: 0.5rem;
-    border-radius: var(--radius);
-    border: 1px solid var(--color-border);
+    gap: 0.75rem;
 }
 
 .stTabs [role="tab"] {
-    padding: 0.75rem 1.25rem;
-    background: transparent;
-    border-radius: calc(var(--radius) - 4px);
+    padding: 0.85rem 1.35rem;
+    background: rgba(99, 102, 241, 0.08);
+    border-radius: var(--radius);
     border: 1px solid transparent;
     transition: var(--transition);
     color: var(--color-text-muted);
     font-weight: 600;
-    position: relative;
-    overflow: hidden;
 }
 
 .stTabs [role="tab"]:hover {
-    background: var(--color-highlight);
+    border-color: rgba(34, 211, 238, 0.4);
     color: var(--color-accent);
 }
 
 .stTabs [aria-selected="true"] {
-    background: var(--color-primary);
-    color: white;
-    box-shadow: 0 4px 12px -2px rgba(79, 70, 229, 0.4);
+    background: var(--color-card);
+    border-color: rgba(99, 102, 241, 0.55);
+    color: var(--color-text);
+    box-shadow: 0 12px 30px -12px rgba(99, 102, 241, 0.6);
 }
 
 [data-testid="stSidebar"] {
-    background: var(--color-bg-secondary);
+    background: rgba(15, 23, 42, 0.85);
     border-right: 1px solid var(--color-border);
     backdrop-filter: blur(var(--blur));
 }
@@ -132,145 +120,148 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .stButton button, .stDownloadButton button {
-    border-radius: 8px !important;
-    background: var(--color-primary);
-    color: white;
-    border: 1px solid var(--color-primary);
+    border-radius: 999px !important;
+    background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(34,211,238,0.15));
+    color: var(--color-text);
+    border: 1px solid rgba(99,102,241,0.35);
     transition: var(--transition);
     font-weight: 600;
-    letter-spacing: 0.025em;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    letter-spacing: 0.03em;
 }
 
 .stButton button:hover, .stDownloadButton button:hover {
-    background: var(--color-secondary);
-    border-color: var(--color-secondary);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    transform: translateY(-2px);
+    border-color: rgba(34,211,238,0.55);
+    background: linear-gradient(135deg, rgba(99,102,241,0.25), rgba(34,211,238,0.25));
+    box-shadow: 0 12px 30px -14px rgba(34, 211, 238, 0.65);
 }
 
 .metric-grid {
     display: grid;
-    gap: 1.5rem;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.2rem;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .metric-card {
-    background: var(--color-card);
+    background: linear-gradient(160deg, rgba(99,102,241,0.16), rgba(15,23,42,0.6));
     border-radius: var(--radius);
-    padding: 1.5rem;
+    padding: 1.4rem 1.6rem;
     border: 1px solid var(--color-border);
     backdrop-filter: blur(var(--blur));
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 20px 45px -25px rgba(15, 23, 42, 0.9);
     transition: var(--transition);
     position: relative;
     overflow: hidden;
 }
 
-.metric-card::before {
+.metric-card::after {
     content: "";
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+    inset: -40% 30% auto auto;
+    width: 180px;
+    height: 180px;
+    background: radial-gradient(circle, rgba(34, 211, 238, 0.28) 0%, transparent 60%);
+    transform: rotate(35deg);
+    opacity: 0.9;
 }
 
 .metric-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    transform: translateY(-6px);
+    border-color: rgba(34, 211, 238, 0.55);
+    box-shadow: 0 24px 55px -28px rgba(34, 211, 238, 0.55);
 }
 
 .metric-card .metric-icon {
-    font-size: 1.5rem;
-    margin-bottom: 0.5rem;
-    display: inline-block;
-    padding: 0.5rem;
-    background: var(--color-highlight);
-    border-radius: 8px;
+    font-size: 1.8rem;
+    margin-bottom: 0.35rem;
 }
 
 .metric-card .metric-label {
-    font-size: 0.875rem;
-    letter-spacing: 0.05em;
+    font-size: 0.78rem;
+    letter-spacing: 0.26em;
     text-transform: uppercase;
     color: var(--color-text-muted);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
 }
 
 .metric-card .metric-value {
-    font-size: 2rem;
+    font-size: clamp(1.75rem, 3vw, 2.45rem);
     font-weight: 700;
     color: var(--color-text);
-    margin: 0.25rem 0 0.5rem;
+    margin: 0.15rem 0 0.5rem;
 }
 
 .metric-card .metric-delta {
     display: inline-flex;
-    gap: 0.25rem;
+    gap: 0.4rem;
     align-items: center;
-    font-size: 0.875rem;
+    font-size: 0.95rem;
     font-weight: 600;
 }
 
 .delta-positive { color: var(--color-success); }
-.delta-negative { color: var(--color-danger); }
+.delta-negative { color: var(--color-negative); }
 .delta-neutral { color: var(--color-warning); }
 
 .hero-card {
-    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
-    border-radius: var(--radius);
-    padding: 2rem;
-    margin-bottom: 2rem;
+    background: linear-gradient(135deg, rgba(99,102,241,0.32), rgba(37,99,235,0.18));
+    border-radius: calc(var(--radius) * 1.1);
+    border: 1px solid rgba(99, 102, 241, 0.38);
+    padding: 1.6rem 1.8rem;
+    margin-bottom: 1.8rem;
     position: relative;
     overflow: hidden;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 28px 60px -32px rgba(99, 102, 241, 0.65);
 }
 
 .hero-card::before {
     content: "";
     position: absolute;
-    top: -50%;
-    right: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
-    animation: float 20s infinite linear;
+    inset: 12% -25% auto auto;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(34,211,238,0.35), transparent 65%);
+    filter: blur(2px);
+    opacity: 0.65;
+    animation: pulseGlow 6s ease-in-out infinite alternate;
 }
 
-@keyframes float {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+@keyframes pulseGlow {
+    from { transform: scale(0.95); opacity: 0.55; }
+    to { transform: scale(1.08); opacity: 0.85; }
 }
 
 .hero-card h1 {
-    font-size: 2.5rem;
-    margin-bottom: 0.75rem;
-    color: white;
+    font-size: clamp(2rem, 3.5vw, 2.8rem);
+    margin-bottom: 0.6rem;
 }
 
 .hero-card p {
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 1.125rem;
-    max-width: 65ch;
-    line-height: 1.6;
+    color: var(--color-text-muted);
+    font-size: 1.02rem;
+    max-width: 62ch;
+    line-height: 1.65;
 }
 
 .insight-card {
     background: var(--color-card);
     border-radius: var(--radius);
-    border: 1px solid var(--color-border);
-    padding: 1.5rem;
+    border: 1px solid rgba(99,102,241,0.28);
+    padding: 1.2rem 1.35rem;
     backdrop-filter: blur(var(--blur));
     position: relative;
     overflow: hidden;
     transition: var(--transition);
 }
 
-.insight-card:hover {
-    border-color: var(--color-primary);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+.insight-card::after {
+    content: "";
+    position: absolute;
+    inset: 65% -30% auto auto;
+    width: 160px;
+    height: 160px;
+    background: radial-gradient(circle, rgba(99,102,241,0.22), transparent 65%);
+    opacity: 0.55;
 }
 
 .insight-card strong {
@@ -278,8 +269,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .stDataFrame {
-    border-radius: var(--radius);
-    border: 1px solid var(--color-border);
+    border-radius: calc(var(--radius) * 0.9);
+    border: 1px solid rgba(99,102,241,0.18);
     overflow: hidden;
 }
 
@@ -291,16 +282,27 @@ h1, h2, h3, h4, h5, h6 {
     background: var(--color-card);
     border-radius: var(--radius);
     border: 1px solid var(--color-border);
-    padding: 1.5rem;
+    padding: 1.2rem;
     margin-bottom: 1.5rem;
     backdrop-filter: blur(var(--blur));
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 20px 45px -25px rgba(15, 23, 42, 0.9);
+}
+
+.correlation-matrix {
+    background: var(--color-card);
+    border-radius: var(--radius);
+    border: 1px solid var(--color-border);
+    padding: 1.2rem;
+    margin-bottom: 1.5rem;
+    backdrop-filter: blur(var(--blur));
+    box-shadow: 0 20px 45px -25px rgba(15, 23, 42, 0.9);
+    overflow: hidden;
 }
 
 .feature-card {
-    background: var(--color-card);
+    background: linear-gradient(160deg, rgba(99,102,241,0.12), rgba(15,23,42,0.6));
     border-radius: var(--radius);
-    padding: 1.5rem;
+    padding: 1.2rem;
     border: 1px solid var(--color-border);
     backdrop-filter: blur(var(--blur));
     margin-bottom: 1rem;
@@ -309,12 +311,11 @@ h1, h2, h3, h4, h5, h6 {
 
 .feature-card:hover {
     transform: translateY(-3px);
-    border-color: var(--color-primary);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    border-color: rgba(34, 211, 238, 0.55);
 }
 
 .feature-card h4 {
-    color: var(--color-primary);
+    color: var(--color-accent);
     margin-bottom: 0.5rem;
 }
 
@@ -324,130 +325,6 @@ h1, h2, h3, h4, h5, h6 {
     margin-bottom: 0;
 }
 
-.ai-response {
-    background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(79, 70, 229, 0.1));
-    border-radius: var(--radius);
-    border: 1px solid rgba(6, 182, 212, 0.2);
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-    backdrop-filter: blur(var(--blur));
-}
-
-.ai-response h4 {
-    color: var(--color-accent);
-    margin-bottom: 0.75rem;
-}
-
-.ai-response p {
-    color: var(--color-text);
-    font-size: 1rem;
-    line-height: 1.6;
-    margin-bottom: 0;
-}
-
-.status-indicator {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.25rem 0.75rem;
-    border-radius: 9999px;
-    font-size: 0.875rem;
-    font-weight: 600;
-}
-
-.status-success {
-    background: rgba(16, 185, 129, 0.1);
-    color: var(--color-success);
-}
-
-.status-warning {
-    background: rgba(245, 158, 11, 0.1);
-    color: var(--color-warning);
-}
-
-.status-danger {
-    background: rgba(239, 68, 68, 0.1);
-    color: var(--color-danger);
-}
-
-.filter-section {
-    background: var(--color-card);
-    border-radius: var(--radius);
-    padding: 1.5rem;
-    border: 1px solid var(--color-border);
-    margin-bottom: 1.5rem;
-}
-
-.export-button {
-    position: fixed;
-    bottom: 2rem;
-    right: 2rem;
-    z-index: 999;
-}
-
-.tooltip {
-    position: relative;
-    display: inline-block;
-}
-
-.tooltip .tooltiptext {
-    visibility: hidden;
-    width: 200px;
-    background-color: var(--color-bg);
-    color: var(--color-text);
-    text-align: center;
-    border-radius: 6px;
-    padding: 8px;
-    position: absolute;
-    z-index: 1;
-    bottom: 125%;
-    left: 50%;
-    margin-left: -100px;
-    opacity: 0;
-    transition: opacity 0.3s;
-    border: 1px solid var(--color-border);
-    font-size: 0.875rem;
-}
-
-.tooltip:hover .tooltiptext {
-    visibility: visible;
-    opacity: 1;
-}
-
-@media (max-width: 768px) {
-    .metric-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .hero-card h1 {
-        font-size: 1.875rem;
-    }
-    
-    .export-button {
-        bottom: 1rem;
-        right: 1rem;
-    }
-}
-
-.loading-animation {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100px;
-}
-
-.loading-spinner {
-    width: 50px;
-    height: 50px;
-    border: 5px solid rgba(79, 70, 229, 0.2);
-    border-radius: 50%;
-    border-top-color: var(--color-primary);
-    animation: spin 1s ease-in-out infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
 </style>
 """
 
@@ -472,12 +349,11 @@ def configure_plotly_theme() -> None:
             margin=dict(l=60, r=40, t=80, b=60),
             xaxis=dict(gridcolor="rgba(148,163,184,0.22)", zerolinecolor="rgba(148,163,184,0.32)"),
             yaxis=dict(gridcolor="rgba(148,163,184,0.22)", zerolinecolor="rgba(148,163,184,0.32)"),
-            colorway=PLOTLY_COLORWAY,
-            hoverlabel=dict(bgcolor="rgba(15, 23, 42, 0.8)", font_size=13, font_family="Inter")
+            colorway=PLOTLY_COLORWAY
         )
     )
-    pio.templates["professional"] = template
-    px.defaults.template = "professional"
+    pio.templates["neon_glass"] = template
+    px.defaults.template = "neon_glass"
     px.defaults.color_discrete_sequence = PLOTLY_COLORWAY
 
 configure_plotly_theme()
@@ -485,17 +361,12 @@ configure_plotly_theme()
 # =========================================================
 # ------------------- FUNGSI UTILITAS ---------------------
 # =========================================================
-def load_lottieurl(url: str):
-    r = requests.get(url)
-    if r.status_code != 200:
-        return None
-    return r.json()
-
 def format_currency(value: float) -> str:
     try:
         return f"Rp {value:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except (TypeError, ValueError):
         return "Rp 0"
+
 
 def format_quantity(value: float) -> str:
     try:
@@ -503,13 +374,13 @@ def format_quantity(value: float) -> str:
     except (TypeError, ValueError):
         return "0"
 
+
 def render_metric_card(
     title: str,
     value: str,
     delta_label: Optional[str] = None,
     delta_type: str = "neutral",
-    icon: str = "📌",
-    status: Optional[str] = None
+    icon: str = "📌"
 ) -> None:
     delta_class = {
         "positive": "delta-positive",
@@ -521,15 +392,6 @@ def render_metric_card(
     if delta_label:
         delta_markup = f'<div class="metric-delta {delta_class}">{delta_label}</div>'
 
-    status_markup = ""
-    if status:
-        status_class = {
-            "success": "status-success",
-            "warning": "status-warning",
-            "danger": "status-danger"
-        }.get(status, "status-success")
-        status_markup = f'<div class="status-indicator {status_class}">{status}</div>'
-
     st.markdown(
         f"""
         <div class="metric-card">
@@ -537,11 +399,11 @@ def render_metric_card(
             <div class="metric-label">{title}</div>
             <div class="metric-value">{value}</div>
             {delta_markup}
-            {status_markup}
         </div>
         """,
         unsafe_allow_html=True
     )
+
 
 @st.cache_data(ttl=600, show_spinner=False)
 def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
@@ -598,6 +460,7 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
 
     return df
 
+
 @st.cache_data(ttl=600, show_spinner=False)
 def aggregate_tag_summary(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -608,6 +471,7 @@ def aggregate_tag_summary(df: pd.DataFrame) -> pd.DataFrame:
         .rename(columns={"sum": "Total Varians", "mean": "Rata-rata Varians", "count": "Jumlah PLU"})
         .sort_values(by="Total Varians", key=lambda x: x.abs(), ascending=False)
     )
+
 
 @st.cache_data(ttl=600, show_spinner=False)
 def detect_outliers_iqr(df: pd.DataFrame, column: str) -> pd.DataFrame:
@@ -620,6 +484,7 @@ def detect_outliers_iqr(df: pd.DataFrame, column: str) -> pd.DataFrame:
     upper_bound = q3 + 1.5 * iqr
     outliers = df[(df[column] < lower_bound) | (df[column] > upper_bound)]
     return outliers.sort_values(by=column, ascending=False)
+
 
 def create_top_products_chart(df: pd.DataFrame, metric: str, top_n: int) -> go.Figure:
     metric_column = "Selisih Value (Rp)" if metric == "Nilai (Rp)" else "Selisih Qty (Pcs)"
@@ -653,7 +518,7 @@ def create_top_products_chart(df: pd.DataFrame, metric: str, top_n: int) -> go.F
         y="DESCP",
         orientation="h",
         color="Varians",
-        color_continuous_scale=[COLOR_DANGER, COLOR_WARNING, COLOR_SUCCESS],
+        color_continuous_scale=[COLOR_NEGATIVE, COLOR_ACCENT, COLOR_SUCCESS],
         labels={"Varians": label_metric, "DESCP": "Deskripsi Produk"},
         title=f"<b>Top {top_n} Produk dengan Varians {metric} Tertinggi</b>",
         height=520
@@ -661,11 +526,11 @@ def create_top_products_chart(df: pd.DataFrame, metric: str, top_n: int) -> go.F
     fig.update_layout(
         yaxis=dict(categoryorder="total ascending"),
         title_x=0.5,
-        coloraxis_showscale=False,
-        hoverlabel=dict(bgcolor="rgba(15, 23, 42, 0.8)", font_size=13)
+        coloraxis_showscale=False
     )
     fig.add_vline(x=0, line_width=1, line_color="rgba(148,163,184,0.35)", line_dash="dot")
     return fig
+
 
 def create_trend_chart(df: pd.DataFrame, metric: str) -> go.Figure:
     metric_column = "Selisih Value (Rp)" if metric == "Nilai (Rp)" else "Selisih Qty (Pcs)"
@@ -712,8 +577,7 @@ def create_trend_chart(df: pd.DataFrame, metric: str) -> go.Figure:
             title="<b>Tren Varians Harian</b>",
             xaxis_title="Tanggal",
             yaxis_title=label_y,
-            title_x=0.5,
-            hoverlabel=dict(bgcolor="rgba(15, 23, 42, 0.8)", font_size=13)
+            title_x=0.5
         )
     else:
         trend_data = (
@@ -729,7 +593,7 @@ def create_trend_chart(df: pd.DataFrame, metric: str) -> go.Figure:
             x="Tanggal Stock Opname",
             y="Varians",
             color="Varians",
-            color_continuous_scale=[COLOR_DANGER, COLOR_WARNING, COLOR_SUCCESS],
+            color_continuous_scale=[COLOR_NEGATIVE, COLOR_ACCENT, COLOR_SUCCESS],
             labels={"Tanggal Stock Opname": "Periode", "Varians": label_y},
             title="<b>Tren Varians Bulanan</b>",
             height=480
@@ -738,6 +602,7 @@ def create_trend_chart(df: pd.DataFrame, metric: str) -> go.Figure:
         fig.add_hline(y=0, line_width=1, line_color="rgba(148,163,184,0.35)", line_dash="dot")
 
     return fig
+
 
 def create_tag_analysis_chart(df: pd.DataFrame, metric: str) -> go.Figure:
     metric_column = "Selisih Value (Rp)" if metric == "Nilai (Rp)" else "Selisih Qty (Pcs)"
@@ -759,7 +624,7 @@ def create_tag_analysis_chart(df: pd.DataFrame, metric: str) -> go.Figure:
         y="Tag",
         orientation="h",
         color="Varians",
-        color_continuous_scale=[COLOR_DANGER, COLOR_WARNING, COLOR_SUCCESS],
+        color_continuous_scale=[COLOR_NEGATIVE, COLOR_ACCENT, COLOR_SUCCESS],
         labels={"Varians": label_metric, "Tag": "Kategori (Tag)"},
         title="<b>Varians per Kategori (Tag)</b>",
         height=520
@@ -767,6 +632,7 @@ def create_tag_analysis_chart(df: pd.DataFrame, metric: str) -> go.Figure:
     fig.update_layout(title_x=0.5, yaxis=dict(categoryorder="total ascending"))
     fig.add_vline(x=0, line_width=1, line_color="rgba(148,163,184,0.32)", line_dash="dot")
     return fig
+
 
 def create_scatter_chart(df: pd.DataFrame) -> go.Figure:
     fig = px.scatter(
@@ -785,6 +651,7 @@ def create_scatter_chart(df: pd.DataFrame) -> go.Figure:
     fig.add_vline(x=0, line_width=1, line_color="rgba(148,163,184,0.32)", line_dash="dot")
     return fig
 
+
 def create_treemap_chart(df: pd.DataFrame) -> go.Figure:
     if df.empty:
         fig = go.Figure()
@@ -802,7 +669,7 @@ def create_treemap_chart(df: pd.DataFrame) -> go.Figure:
         path=["Tag", "DESCP"],
         values="Varians Nilai Absolut",
         color="Selisih Value (Rp)",
-        color_continuous_scale=[COLOR_DANGER, "#94A3B8", COLOR_SUCCESS],
+        color_continuous_scale=[COLOR_NEGATIVE, "#94A3B8", COLOR_SUCCESS],
         color_continuous_midpoint=0,
         title="<b>Treemap Varians Nilai per Tag & Produk</b>",
         height=520
@@ -810,107 +677,6 @@ def create_treemap_chart(df: pd.DataFrame) -> go.Figure:
     fig.update_layout(title_x=0.5, margin=dict(t=80, l=30, r=30, b=30))
     return fig
 
-def create_sunburst_chart(df: pd.DataFrame) -> go.Figure:
-    if df.empty:
-        fig = go.Figure()
-        fig.add_annotation(
-            text="Tidak ada data untuk sunburst.",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5,
-            showarrow=False,
-            font=dict(color="#CBD5F5", size=16)
-        )
-        fig.update_layout(title="<b>Sunburst Varians</b>", title_x=0.5)
-        return fig
-    
-    # Aggregate data for sunburst
-    sunburst_data = df.groupby(["Tag", "Arah Varians"]).agg({
-        "Selisih Value (Rp)": "sum",
-        "Varians Nilai Absolut": "sum"
-    }).reset_index()
-    
-    fig = px.sunburst(
-        sunburst_data,
-        path=["Tag", "Arah Varians"],
-        values="Varians Nilai Absolut",
-        color="Selisih Value (Rp)",
-        color_continuous_scale=[COLOR_DANGER, "#94A3B8", COLOR_SUCCESS],
-        color_continuous_midpoint=0,
-        title="<b>Sunburst Varians per Kategori</b>",
-        height=520
-    )
-    fig.update_layout(title_x=0.5)
-    return fig
-
-def create_pie_chart(df: pd.DataFrame, column: str) -> go.Figure:
-    if column not in df.columns or df.empty:
-        fig = go.Figure()
-        fig.add_annotation(
-            text=f"Kolom '{column}' tidak ditemukan atau data kosong.",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5,
-            showarrow=False,
-            font=dict(color="#CBD5F5", size=16)
-        )
-        fig.update_layout(title=f"<b>Distribusi {column}</b>", title_x=0.5)
-        return fig
-    
-    pie_data = df[column].value_counts().reset_index()
-    pie_data.columns = [column, "Count"]
-    
-    fig = px.pie(
-        pie_data,
-        values="Count",
-        names=column,
-        title=f"<b>Distribusi {column}</b>",
-        color_discrete_sequence=PLOTLY_COLORWAY,
-        height=500
-    )
-    fig.update_layout(title_x=0.5)
-    return fig
-
-def create_heatmap(df: pd.DataFrame, x_col: str, y_col: str, value_col: str) -> go.Figure:
-    if any(col not in df.columns for col in [x_col, y_col, value_col]) or df.empty:
-        fig = go.Figure()
-        fig.add_annotation(
-            text="Kolom yang diperlukan tidak ditemukan atau data kosong.",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5,
-            showarrow=False,
-            font=dict(color="#CBD5F5", size=16)
-        )
-        fig.update_layout(title="<b>Heatmap</b>", title_x=0.5)
-        return fig
-    
-    # Create pivot table for heatmap
-    heatmap_data = df.pivot_table(
-        values=value_col,
-        index=y_col,
-        columns=x_col,
-        aggfunc="sum",
-        fill_value=0
-    )
-    
-    fig = go.Figure(data=go.Heatmap(
-        z=heatmap_data.values,
-        x=heatmap_data.columns,
-        y=heatmap_data.index,
-        colorscale='RdBu',
-        zmid=0,
-        text=heatmap_data.round(0).values,
-        texttemplate="%{text}",
-        textfont={"size": 10},
-        hoverongaps=False
-    ))
-    
-    fig.update_layout(
-        title=f"<b>Heatmap {value_col} per {x_col} dan {y_col}</b>",
-        title_x=0.5,
-        xaxis_title=x_col,
-        yaxis_title=y_col
-    )
-    
-    return fig
 
 def filter_dataframe(
     df: pd.DataFrame,
@@ -939,6 +705,7 @@ def filter_dataframe(
 
     return filtered
 
+
 def render_insight_card(title: str, value: str, description: str, icon: str = "✨") -> None:
     st.markdown(
         f"""
@@ -950,6 +717,7 @@ def render_insight_card(title: str, value: str, description: str, icon: str = "�
         """,
         unsafe_allow_html=True
     )
+
 
 def highlight_insights(df: pd.DataFrame) -> None:
     if df.empty:
@@ -1292,125 +1060,6 @@ def create_time_series_decomposition(df: pd.DataFrame) -> go.Figure:
     return fig
 
 # =========================================================
-# ------------------- FUNGSI GEMINI AI --------------------
-# =========================================================
-def configure_gemini():
-    try:
-        api_key = st.secrets["gemini"]["api_key"]
-        genai.configure(api_key=api_key)
-        # Menggunakan model gemini-2.0-flash yang Anda sebutkan
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        return model
-    except Exception as e:
-        st.error(f"Gagal mengkonfigurasi Gemini API: {e}")
-        return None
-
-def generate_data_insights(df: pd.DataFrame, model) -> str:
-    if df.empty or model is None:
-        return "Tidak ada data atau model tidak tersedia."
-    
-    # Prepare data summary
-    total_records = len(df)
-    date_range = f"{df['Tanggal Stock Opname'].min().date()} hingga {df['Tanggal Stock Opname'].max().date()}"
-    total_variance_value = df["Selisih Value (Rp)"].sum()
-    total_variance_qty = df["Selisih Qty (Pcs)"].sum()
-    top_tags = df.groupby("Tag")["Selisih Value (Rp)"].sum().abs().sort_values(ascending=False).head(3).index.tolist()
-    
-    # Get top positive and negative variance products
-    top_positive = df[df["Selisih Value (Rp)"] > 0].sort_values("Selisih Value (Rp)", ascending=False).head(3)
-    top_negative = df[df["Selisih Value (Rp)"] < 0].sort_values("Selisih Value (Rp)").head(3)
-    
-    # Create prompt for Gemini
-    prompt = f"""
-    Analisis data varians stok opname berikut dan berikan insight yang berharga:
-    
-    Ringkasan Data:
-    - Total Records: {total_records}
-    - Periode Data: {date_range}
-    - Total Varians Nilai: {format_currency(total_variance_value)}
-    - Total Varians Kuantitas: {format_quantity(total_variance_qty)} pcs
-    - Top 3 Tag dengan Varians Tertinggi: {', '.join(top_tags)}
-    
-    Produk dengan Varians Positif Tertinggi:
-    {top_positive[['DESCP', 'Selisih Value (Rp)', 'Selisih Qty (Pcs)']].to_string(index=False)}
-    
-    Produk dengan Varians Negatif Terbesar:
-    {top_negative[['DESCP', 'Selisih Value (Rp)', 'Selisih Qty (Pcs)']].to_string(index=False)}
-    
-    Berikan analisis mendalam tentang:
-    1. Pola atau tren yang menonjol dari data varians stok
-    2. Kemungkinan penyebab varians positif dan negatif
-    3. Area yang perlu mendapat perhatian khusus
-    4. Rekomendasi tindakan untuk mengurangi varians negatif
-    5. Strategi untuk memanfaatkan produk dengan varians positif
-    
-    Jawab dalam bahasa Indonesia dengan gaya profesional namun mudah dipahami.
-    """
-    
-    try:
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"Terjadi kesalahan saat menghasilkan insight: {e}"
-
-def answer_data_question(df: pd.DataFrame, question: str, model) -> str:
-    if df.empty or model is None:
-        return "Tidak ada data atau model tidak tersedia."
-    
-    # Prepare data summary
-    data_summary = df.head(10).to_string()
-    
-    # Create prompt for Gemini
-    prompt = f"""
-    Berdasarkan data varians stok opname berikut:
-    
-    {data_summary}
-    
-    Jawab pertanyaan ini dengan bahasa Indonesia: "{question}"
-    
-    Jika jawaban memerlukan analisis lebih dari 10 baris data pertama, berikan jawaban berdasarkan pola umum yang terlihat dari data.
-    """
-    
-    try:
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"Terjadi kesalahan saat menjawab pertanyaan: {e}"
-
-def generate_recommendations(df: pd.DataFrame, model) -> str:
-    if df.empty or model is None:
-        return "Tidak ada data atau model tidak tersedia."
-    
-    # Identify problematic areas
-    negative_variance = df[df["Selisih Value (Rp)"] < 0]
-    outliers = detect_outliers_iqr(df, "Selisih Value (Rp)")
-    
-    # Create prompt for Gemini
-    prompt = f"""
-    Berdasarkan data varians stok opname, berikan rekomendasi bisnis yang spesifik dan actionable:
-    
-    Informasi Penting:
-    - Total produk dengan varians negatif: {len(negative_variance)} dari {len(df)} produk
-    - Total nilai varians negatif: {format_currency(negative_variance['Selisih Value (Rp)'].sum())}
-    - Jumlah outlier yang terdeteksi: {len(outliers)}
-    
-    Berikan 5 rekomendasi prioritas yang dapat diimplementasikan untuk:
-    1. Mengurangi varians stok negatif
-    2. Meningkatkan akurasi stok opname
-    3. Mengoptimalkan proses inventory management
-    4. Mengidentifikasi area yang perlu audit lebih lanjut
-    5. Meningkatkan profitabilitas terkait manajemen stok
-    
-    Jawab dalam bahasa Indonesia dengan format daftar yang jelas dan actionable.
-    """
-    
-    try:
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"Terjadi kesalahan saat menghasilkan rekomendasi: {e}"
-
-# =========================================================
 # ----------------------- SIDEBAR -------------------------
 # =========================================================
 with st.sidebar:
@@ -1484,9 +1133,6 @@ if dataframe is None or dataframe.empty:
     st.error("Tidak ada data yang dapat diproses. Periksa kembali sumber data Anda.")
     st.stop()
 
-# Initialize Gemini model
-gemini_model = configure_gemini()
-
 min_date = dataframe["Tanggal Stock Opname"].min().to_pydatetime()
 max_date = dataframe["Tanggal Stock Opname"].max().to_pydatetime()
 available_tags = sorted(dataframe["Tag"].unique().tolist())
@@ -1539,14 +1185,6 @@ negative_value = filtered_df.loc[filtered_df["Selisih Value (Rp)"] < 0, "Selisih
 positive_qty = filtered_df.loc[filtered_df["Selisih Qty (Pcs)"] > 0, "Selisih Qty (Pcs)"].sum()
 negative_qty = filtered_df.loc[filtered_df["Selisih Qty (Pcs)"] < 0, "Selisih Qty (Pcs)"].sum()
 
-# Determine status based on variance
-if total_value > 0:
-    variance_status = "success"
-elif total_value < 0:
-    variance_status = "danger"
-else:
-    variance_status = "warning"
-
 metric_container = st.container()
 with metric_container:
     st.markdown('<div class="metric-grid">', unsafe_allow_html=True)
@@ -1555,8 +1193,7 @@ with metric_container:
         format_currency(total_value),
         delta_label=f"{format_currency(positive_value)} ⬆︎ / {format_currency(negative_value)} ⬇︎",
         delta_type="neutral",
-        icon="💰",
-        status=variance_status
+        icon="💰"
     )
     render_metric_card(
         "Total Varians Kuantitas",
@@ -1585,15 +1222,11 @@ st.divider()
 # =========================================================
 tabs = st.tabs([
     "🔍 Analisis Data Mendalam",
-    "🤖 Analisis AI",
     "🏆 Analisis Produk",
     "📈 Tren Waktu",
     "🏷️ Analisis Kategori",
     "🔍 Scatter Varians",
-    "🗺️ Treemap",
-    "☀️ Sunburst",
-    "📊 Distribusi",
-    "🔥 Heatmap"
+    "🗺️ Treemap"
 ])
 
 with tabs[0]:
@@ -1654,81 +1287,19 @@ with tabs[0]:
         st.dataframe(stats_summary, use_container_width=True)
 
 with tabs[1]:
-    st.subheader("🤖 Analisis AI dengan Gemini")
-    
-    if gemini_model is None:
-        st.error("Model Gemini tidak tersedia. Pastikan API key sudah dikonfigurasi dengan benar.")
-    else:
-        # AI Insights Section
-        st.markdown("### 🧠 Insight Cerdas dari Data")
-        
-        if st.button("🔍 Generate Insight", type="primary"):
-            with st.spinner("Menganalisis data dengan AI..."):
-                insights = generate_data_insights(filtered_df, gemini_model)
-                
-                st.markdown('<div class="ai-response">', unsafe_allow_html=True)
-                st.markdown(insights)
-                st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Q&A Section
-        st.markdown("### ❓ Tanya Jawab tentang Data")
-        
-        question = st.text_input("Ajukan pertanyaan tentang data varians stok:", 
-                                placeholder="Contoh: Produk apa yang paling sering mengalami varians negatif?")
-        
-        if st.button("Kirim Pertanyaan") and question:
-            with st.spinner("Mencari jawaban..."):
-                answer = answer_data_question(filtered_df, question, gemini_model)
-                
-                st.markdown('<div class="ai-response">', unsafe_allow_html=True)
-                st.markdown(f"**Pertanyaan:** {question}")
-                st.markdown(f"**Jawaban:** {answer}")
-                st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Recommendations Section
-        st.markdown("### 💡 Rekomendasi Bisnis")
-        
-        if st.button("📋 Generate Rekomendasi", type="primary"):
-            with st.spinner("Menghasilkan rekomendasi..."):
-                recommendations = generate_recommendations(filtered_df, gemini_model)
-                
-                st.markdown('<div class="ai-response">', unsafe_allow_html=True)
-                st.markdown(recommendations)
-                st.markdown('</div>', unsafe_allow_html=True)
-
-with tabs[2]:
     st.plotly_chart(create_top_products_chart(filtered_df, metric_selection, top_n), use_container_width=True)
 
-with tabs[3]:
+with tabs[2]:
     st.plotly_chart(create_trend_chart(filtered_df, metric_selection), use_container_width=True)
 
-with tabs[4]:
+with tabs[3]:
     st.plotly_chart(create_tag_analysis_chart(filtered_df, metric_selection), use_container_width=True)
 
-with tabs[5]:
+with tabs[4]:
     st.plotly_chart(create_scatter_chart(filtered_df), use_container_width=True)
 
-with tabs[6]:
+with tabs[5]:
     st.plotly_chart(create_treemap_chart(filtered_df), use_container_width=True)
-
-with tabs[7]:
-    st.plotly_chart(create_sunburst_chart(filtered_df), use_container_width=True)
-
-with tabs[8]:
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.plotly_chart(create_pie_chart(filtered_df, "Tag"), use_container_width=True)
-    
-    with col2:
-        st.plotly_chart(create_pie_chart(filtered_df, "Arah Varians"), use_container_width=True)
-
-with tabs[9]:
-    st.plotly_chart(create_heatmap(filtered_df, "Tag", "Arah Varians", "Selisih Value (Rp)"), use_container_width=True)
 
 st.divider()
 
@@ -1744,10 +1315,4 @@ with st.expander("📄 Lihat Data Detail", expanded=False):
     df_display["Varians Qty Absolut"] = df_display["Varians Qty Absolut"].apply(format_quantity)
     st.dataframe(df_display, use_container_width=True, hide_index=True)
 
-# Export button
-csv = filtered_df.to_csv(index=False)
-b64 = base64.b64encode(csv.encode()).decode()
-href = f'<a href="data:file/csv;base64,{b64}" download="varians_stok_opname.csv" class="export-button"><button class="stButton">📥 Export Data</button></a>'
-st.markdown(href, unsafe_allow_html=True)
-
-st.caption("© 2025 – Dashboard Varians Stok Opname • Dibangun dengan Streamlit + Plotly • Desain profesional modern")
+st.caption("© 2025 – Dashboard Varians Stok Opname • Dibangun dengan Streamlit + Plotly • Desain futuristic-glassmorphism")
