@@ -425,7 +425,7 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
     df.dropna(axis=0, how="all", inplace=True)
     df.columns = df.columns.str.strip()
 
-    # Mapping kolom sesuai dengan struktur data RekapSo
+    # Mapping kolom sesuai dengan struktur data RekapSO
     rename_map = {
         "TANGGAL": "Tanggal Stock Opname",
         "SELISIH_QTY": "Selisih Qty (Pcs)",
@@ -1086,7 +1086,7 @@ with st.sidebar:
 
     sheet_name = st.text_input(
         "Nama Worksheet",
-        value="RekapSo",
+        value="RekapSO",  # Diperbaiki dari RekapSo menjadi RekapSO
         help="Pastikan nama worksheet sesuai dengan di Google Sheets."
     )
 
@@ -1312,12 +1312,30 @@ st.divider()
 # ------------------- TABEL DETAIL ------------------------
 # =========================================================
 with st.expander("📄 Lihat Data Detail", expanded=False):
+    # Perbaikan: Menangani nilai NaN sebelum menampilkan dataframe
     df_display = filtered_df.copy()
+    
+    # Mengisi nilai NaN dengan string kosong untuk kolom string
+    string_columns = df_display.select_dtypes(include=['object']).columns
+    df_display[string_columns] = df_display[string_columns].fillna('')
+    
+    # Mengisi nilai NaN dengan 0 untuk kolom numerik
+    numeric_columns = df_display.select_dtypes(include=[np.number]).columns
+    df_display[numeric_columns] = df_display[numeric_columns].fillna(0)
+    
+    # Format kolom
     df_display["Tanggal Stock Opname"] = df_display["Tanggal Stock Opname"].dt.strftime("%Y-%m-%d")
-    df_display["Selisih Qty (Pcs)"] = df_display["Selisih Qty (Pcs)"].apply(format_quantity)
-    df_display["Selisih Value (Rp)"] = df_display["Selisih Value (Rp)"].apply(format_currency)
-    df_display["Varians Nilai Absolut"] = df_display["Varians Nilai Absolut"].apply(format_currency)
-    df_display["Varians Qty Absolut"] = df_display["Varians Qty Absolut"].apply(format_quantity)
+    
+    # Format kolom numerik
+    if "Selisih Qty (Pcs)" in df_display.columns:
+        df_display["Selisih Qty (Pcs)"] = df_display["Selisih Qty (Pcs)"].apply(format_quantity)
+    if "Selisih Value (Rp)" in df_display.columns:
+        df_display["Selisih Value (Rp)"] = df_display["Selisih Value (Rp)"].apply(format_currency)
+    if "Varians Nilai Absolut" in df_display.columns:
+        df_display["Varians Nilai Absolut"] = df_display["Varians Nilai Absolut"].apply(format_currency)
+    if "Varians Qty Absolut" in df_display.columns:
+        df_display["Varians Qty Absolut"] = df_display["Varians Qty Absolut"].apply(format_quantity)
+    
     st.dataframe(df_display, use_container_width=True, hide_index=True)
 
 st.caption("© 2025 – Dashboard Varians Stok Opname • Dibangun dengan Streamlit + Plotly • Desain futuristic-glassmorphism")
