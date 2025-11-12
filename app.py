@@ -425,10 +425,13 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
     df.dropna(axis=0, how="all", inplace=True)
     df.columns = df.columns.str.strip()
 
+    # Mapping kolom sesuai dengan struktur data RekapSo
     rename_map = {
-        "Tanggal SO": "Tanggal Stock Opname",
-        "Selisih Qty": "Selisih Qty (Pcs)",
-        "Selisih Value": "Selisih Value (Rp)"
+        "TANGGAL": "Tanggal Stock Opname",
+        "SELISIH_QTY": "Selisih Qty (Pcs)",
+        "SELISIH_RP": "Selisih Value (Rp)",
+        "CATEGORY_NAME": "Kategori",
+        "DESCP": "Nama Produk"
     }
     df.rename(columns=rename_map, inplace=True)
 
@@ -436,6 +439,7 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
         st.error("Kolom 'Tanggal Stock Opname' tidak ditemukan pada sheet.")
         return None
 
+    # Konversi tanggal dengan format dd-mm-yyyy
     df["Tanggal Stock Opname"] = pd.to_datetime(df["Tanggal Stock Opname"], errors="coerce", dayfirst=True)
 
     for kolom in ["Selisih Qty (Pcs)", "Selisih Value (Rp)"]:
@@ -447,8 +451,9 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
         inplace=True
     )
 
-    if "Tag" in df.columns:
-        df["Tag"] = df["Tag"].replace("", "Tidak Terdefinisi").fillna("Tidak Terdefinisi")
+    # Handle kolom TAG
+    if "TAG" in df.columns:
+        df["Tag"] = df["TAG"].replace("", "Tidak Terdefinisi").fillna("Tidak Terdefinisi")
     else:
         df["Tag"] = "Tidak Terdefinisi"
 
@@ -491,7 +496,7 @@ def create_top_products_chart(df: pd.DataFrame, metric: str, top_n: int) -> go.F
     label_metric = "Total Varians Nilai (Rp)" if metric == "Nilai (Rp)" else "Total Varians Kuantitas (Pcs)"
 
     top_products = (
-        df.groupby(["PLU", "DESCP"], dropna=False)[metric_column]
+        df.groupby(["PLU", "Nama Produk"], dropna=False)[metric_column]
         .sum()
         .to_frame("Varians")
         .assign(Varians_Absolut=lambda x: x["Varians"].abs())
@@ -515,11 +520,11 @@ def create_top_products_chart(df: pd.DataFrame, metric: str, top_n: int) -> go.F
     fig = px.bar(
         top_products,
         x="Varians",
-        y="DESCP",
+        y="Nama Produk",
         orientation="h",
         color="Varians",
         color_continuous_scale=[COLOR_NEGATIVE, COLOR_ACCENT, COLOR_SUCCESS],
-        labels={"Varians": label_metric, "DESCP": "Deskripsi Produk"},
+        labels={"Varians": label_metric, "Nama Produk": "Deskripsi Produk"},
         title=f"<b>Top {top_n} Produk dengan Varians {metric} Tertinggi</b>",
         height=520
     )
@@ -639,7 +644,7 @@ def create_scatter_chart(df: pd.DataFrame) -> go.Figure:
         df,
         x="Selisih Qty (Pcs)",
         y="Selisih Value (Rp)",
-        hover_data=["PLU", "DESCP", "Tag"],
+        hover_data=["PLU", "Nama Produk", "Tag"],
         color="Tag",
         color_discrete_sequence=PLOTLY_COLORWAY,
         title="<b>Varians Kuantitas vs Nilai</b>",
@@ -666,7 +671,7 @@ def create_treemap_chart(df: pd.DataFrame) -> go.Figure:
         return fig
     fig = px.treemap(
         df,
-        path=["Tag", "DESCP"],
+        path=["Tag", "Nama Produk"],
         values="Varians Nilai Absolut",
         color="Selisih Value (Rp)",
         color_continuous_scale=[COLOR_NEGATIVE, "#94A3B8", COLOR_SUCCESS],
@@ -756,7 +761,7 @@ def highlight_insights(df: pd.DataFrame) -> None:
             row = biggest_positive.iloc[0]
             render_insight_card(
                 title="Varians Positif Tertinggi",
-                value=row["DESCP"],
+                value=row["Nama Produk"],
                 description=f"Selisih nilai {format_currency(row['Selisih Value (Rp)'])} • {format_quantity(row['Selisih Qty (Pcs)'])} pcs.",
                 icon="📈"
             )
@@ -773,7 +778,7 @@ def highlight_insights(df: pd.DataFrame) -> None:
             row = biggest_negative.iloc[0]
             render_insight_card(
                 title="Varians Negatif Terbesar",
-                value=row["DESCP"],
+                value=row["Nama Produk"],
                 description=f"Selisih nilai {format_currency(row['Selisih Value (Rp)'])} • {format_quantity(row['Selisih Qty (Pcs)'])} pcs.",
                 icon="📉"
             )
@@ -795,7 +800,7 @@ def highlight_insights(df: pd.DataFrame) -> None:
         if outlier_count > 0:
             with st.expander("Lihat detail outlier"):
                 st.dataframe(
-                    outliers_value[["PLU", "DESCP", "Selisih Value (Rp)", "Selisih Qty (Pcs)", "Tag"]],
+                    outliers_value[["PLU", "Nama Produk", "Selisih Value (Rp)", "Selisih Qty (Pcs)", "Tag"]],
                     use_container_width=True
                 )
 
@@ -1081,7 +1086,7 @@ with st.sidebar:
 
     sheet_name = st.text_input(
         "Nama Worksheet",
-        value="Sheet1",
+        value="RekapSo",
         help="Pastikan nama worksheet sesuai dengan di Google Sheets."
     )
 
