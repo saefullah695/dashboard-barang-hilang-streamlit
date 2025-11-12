@@ -1312,30 +1312,42 @@ st.divider()
 # ------------------- TABEL DETAIL ------------------------
 # =========================================================
 with st.expander("📄 Lihat Data Detail", expanded=False):
-    # Perbaikan: Menangani nilai NaN sebelum menampilkan dataframe
+    # Perbaikan komprehensif untuk menangani nilai NaN
     df_display = filtered_df.copy()
     
-    # Mengisi nilai NaN dengan string kosong untuk kolom string
+    # Reset index untuk menghindari masalah dengan index
+    df_display = df_display.reset_index(drop=True)
+    
+    # Konversi kolom tanggal ke string
+    if "Tanggal Stock Opname" in df_display.columns:
+        df_display["Tanggal Stock Opname"] = df_display["Tanggal Stock Opname"].dt.strftime("%Y-%m-%d")
+    
+    # Handle semua nilai NaN secara komprehensif
+    # Untuk kolom string, isi dengan string kosong
     string_columns = df_display.select_dtypes(include=['object']).columns
     df_display[string_columns] = df_display[string_columns].fillna('')
     
-    # Mengisi nilai NaN dengan 0 untuk kolom numerik
+    # Untuk kolom numerik, isi dengan 0
     numeric_columns = df_display.select_dtypes(include=[np.number]).columns
     df_display[numeric_columns] = df_display[numeric_columns].fillna(0)
     
-    # Format kolom
-    df_display["Tanggal Stock Opname"] = df_display["Tanggal Stock Opname"].dt.strftime("%Y-%m-%d")
+    # Pastikan tidak ada nilai NaN yang tersisa
+    df_display = df_display.fillna('')
     
-    # Format kolom numerik
+    # Format kolom numerik - pastikan nilai sudah tidak NaN
     if "Selisih Qty (Pcs)" in df_display.columns:
-        df_display["Selisih Qty (Pcs)"] = df_display["Selisih Qty (Pcs)"].apply(format_quantity)
-    if "Selisih Value (Rp)" in df_display.columns:
-        df_display["Selisih Value (Rp)"] = df_display["Selisih Value (Rp)"].apply(format_currency)
-    if "Varians Nilai Absolut" in df_display.columns:
-        df_display["Varians Nilai Absolut"] = df_display["Varians Nilai Absolut"].apply(format_currency)
-    if "Varians Qty Absolut" in df_display.columns:
-        df_display["Varians Qty Absolut"] = df_display["Varians Qty Absolut"].apply(format_quantity)
+        df_display["Selisih Qty (Pcs)"] = df_display["Selisih Qty (Pcs)"].apply(lambda x: format_quantity(x) if pd.notna(x) else "0")
     
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
+    if "Selisih Value (Rp)" in df_display.columns:
+        df_display["Selisih Value (Rp)"] = df_display["Selisih Value (Rp)"].apply(lambda x: format_currency(x) if pd.notna(x) else "Rp 0")
+    
+    if "Varians Nilai Absolut" in df_display.columns:
+        df_display["Varians Nilai Absolut"] = df_display["Varians Nilai Absolut"].apply(lambda x: format_currency(x) if pd.notna(x) else "Rp 0")
+    
+    if "Varians Qty Absolut" in df_display.columns:
+        df_display["Varians Qty Absolut"] = df_display["Varians Qty Absolut"].apply(lambda x: format_quantity(x) if pd.notna(x) else "0")
+    
+    # Tampilkan dataframe - tanpa hide_index untuk menghindari masalah
+    st.dataframe(df_display, use_container_width=True)
 
 st.caption("© 2025 – Dashboard Varians Stok Opname • Dibangun dengan Streamlit + Plotly • Desain futuristic-glassmorphism")
