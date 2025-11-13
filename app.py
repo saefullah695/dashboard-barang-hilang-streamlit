@@ -439,8 +439,33 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
         st.error("Kolom 'Tanggal Stock Opname' tidak ditemukan pada sheet.")
         return None
 
-    # Konversi tanggal dengan format dd-mm-yyyy
-    df["Tanggal Stock Opname"] = pd.to_datetime(df["Tanggal Stock Opname"], errors="coerce", dayfirst=True)
+    # PERBAIKAN 1: Konversi tanggal dengan berbagai format
+    def parse_date(date_str):
+        if pd.isna(date_str) or date_str == '':
+            return pd.NaT
+            
+        # Coba berbagai format tanggal
+        date_formats = [
+            '%d-%m-%Y', '%d/%m/%Y', '%d.%m.%Y',  # Format Indonesia
+            '%Y-%m-%d', '%Y/%m/%d', '%Y.%m.%d',  # Format ISO
+            '%m-%d-%Y', '%m/%d/%Y', '%m.%d.%Y',  # Format US
+            '%d-%b-%Y', '%d/%b/%Y', '%d.%b.%Y',  # Format dengan nama bulan
+            '%d-%B-%Y', '%d/%B/%Y', '%d.%B.%Y',  # Format dengan nama bulan panjang
+        ]
+        
+        for fmt in date_formats:
+            try:
+                return pd.to_datetime(date_str, format=fmt)
+            except (ValueError, TypeError):
+                continue
+        
+        # Jika semua format gagal, coba parsing otomatis
+        try:
+            return pd.to_datetime(date_str, infer_datetime_format=True)
+        except (ValueError, TypeError):
+            return pd.NaT
+
+    df["Tanggal Stock Opname"] = df["Tanggal Stock Opname"].apply(parse_date)
 
     for kolom in ["Selisih Qty (Pcs)", "Selisih Value (Rp)"]:
         if kolom in df.columns:
@@ -1311,43 +1336,71 @@ st.divider()
 # =========================================================
 # ------------------- TABEL DETAIL ------------------------
 # =========================================================
-with st.expander("📄 Lihat Data Detail", expanded=False):
-    # Perbaikan komprehensif untuk menangani nilai NaN
-    df_display = filtered_df.copy()
+# PERBAIKAN 2: Fungsi untuk membersihkan dataframe dari NaN dan masalah JSON
+def clean_dataframe_for_display(df: pd.DataFrame) -> pd.DataFrame:
+    """Membersihkan dataframe untuk ditampilkan di Streamlit"""
+    df_clean = df.copy()
     
-    # Reset index untuk menghindari masalah dengan index
-    df_display = df_display.reset_index(drop=True)
+    # Reset index
+    df_clean = df_clean.reset_index(drop=True)
     
     # Konversi kolom tanggal ke string
-    if "Tanggal Stock Opname" in df_display.columns:
-        df_display["Tanggal Stock Opname"] = df_display["Tanggal Stock Opname"].dt.strftime("%Y-%m-%d")
+    if "Tanggal Stock Opname" in df_clean.columns:
+        df_clean["Tanggal Stock Opname"] = df_clean["Tanggal Stock Opname"].dt.strftime("%Y-%m-%d")
     
-    # Handle semua nilai NaN secara komprehensif
-    # Untuk kolom string, isi dengan string kosong
-    string_columns = df_display.select_dtypes(include=['object']).columns
-    df_display[string_columns] = df_display[string_columns].fillna('')
+    # Ganti semua nilai NaN/None dengan nilai default
+    for col in df_clean.columns:
+        if df_clean[col].dtype == object:
+            # Untuk kolom string, ganti NaN dengan string kosong
+            df_clean[col] = df_clean[col].fillna('')
+        elif pd.api.types.is_numeric_dtype(df_clean[col]):
+            # Untuk kolom numerik, ganti NaN dengan 0
+            df_clean[col] = df_clean[col].fillna(0)
+        else:
+            # Untuk tipe data lain, konversi ke string dan ganti NaN
+            df_clean[col] = df_clean[col].astype(str).fillna('')
     
-    # Untuk kolom numerik, isi dengan 0
-    numeric_columns = df_display.select_dtypes(include=[np.number]).columns
-    df_display[numeric_columns] = df_display[numeric_columns].fillna(0)
+    # Format kolom numerik khusus
+    if "Selisih Qty (Pcs)" in df_clean.columns:
+        df_clean["Selisih Qty (Pcs)"] = df_clean["Selisih Qty (Pcs)"].apply(
+            lambda x: format_quantity(x) if isinstance(x, (int, float)) else str(x)
+        )
     
-    # Pastikan tidak ada nilai NaN yang tersisa
-    df_display = df_display.fillna('')
+    if "Selisih Value (Rp)" in df_clean.columns:
+        df_clean["Selisih Value (Rp)"] = df_clean["Selisih Value (Rp)"].apply(
+            lambda x: format_currency(x) if isinstance(x, (int, float)) else str(x)
+        )
     
-    # Format kolom numerik - pastikan nilai sudah tidak NaN
-    if "Selisih Qty (Pcs)" in df_display.columns:
-        df_display["Selisih Qty (Pcs)"] = df_display["Selisih Qty (Pcs)"].apply(lambda x: format_quantity(x) if pd.notna(x) else "0")
+    if "Varians Nilai Absolut" in df_clean.columns:
+        df_clean["Varians Nilai Absolut"] = df_clean["Varians Nilai Absolut"].apply(
+            lambda x: format_currency(x) if isinstance(x, (int, float)) else str(x)
+        )
     
-    if "Selisih Value (Rp)" in df_display.columns:
-        df_display["Selisih Value (Rp)"] = df_display["Selisih Value (Rp)"].apply(lambda x: format_currency(x) if pd.notna(x) else "Rp 0")
+    if "Varians Qty Absolut" in df_clean.columns:
+        df_clean["Varians Qty Absolut"] = df_clean["Varians Qty Absolut"].apply(
+            lambda x: format_quantity(x) if isinstance(x, (int, float)) else str(x)
+        )
     
-    if "Varians Nilai Absolut" in df_display.columns:
-        df_display["Varians Nilai Absolut"] = df_display["Varians Nilai Absolut"].apply(lambda x: format_currency(x) if pd.notna(x) else "Rp 0")
+    return df_clean
+
+with st.expander("📄 Lihat Data Detail", expanded=False):
+    # Gunakan fungsi pembersih dataframe yang baru
+    df_display = clean_dataframe_for_display(filtered_df)
     
-    if "Varians Qty Absolut" in df_display.columns:
-        df_display["Varians Qty Absolut"] = df_display["Varians Qty Absolut"].apply(lambda x: format_quantity(x) if pd.notna(x) else "0")
-    
-    # Tampilkan dataframe - tanpa hide_index untuk menghindari masalah
-    st.dataframe(df_display, use_container_width=True)
+    # Tampilkan dataframe dengan handling error
+    try:
+        st.dataframe(df_display, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error menampilkan dataframe: {e}")
+        st.info("Menampilkan data dalam format alternatif...")
+        
+        # Alternatif: tampilkan sebagai CSV
+        csv_data = df_display.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Data sebagai CSV",
+            data=csv_data,
+            file_name="data_varians_stok.csv",
+            mime="text/csv"
+        )
 
 st.caption("© 2025 – Dashboard Varians Stok Opname • Dibangun dengan Streamlit + Plotly • Desain futuristic-glassmorphism")
