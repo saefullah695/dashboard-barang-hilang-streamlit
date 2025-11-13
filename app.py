@@ -441,7 +441,7 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
 
     # PERBAIKAN 1: Konversi tanggal dengan berbagai format
     def parse_date(date_str):
-        if pd.isna(date_str) or date_str == '':
+        if pd.isna(date_str) or date_str == '' or date_str is None:
             return pd.NaT
             
         # Coba berbagai format tanggal
@@ -461,7 +461,7 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
         
         # Jika semua format gagal, coba parsing otomatis
         try:
-            return pd.to_datetime(date_str, infer_datetime_format=True)
+            return pd.to_datetime(date_str, infer_datetime_format=True, errors='coerce')
         except (ValueError, TypeError):
             return pd.NaT
 
@@ -1111,7 +1111,7 @@ with st.sidebar:
 
     sheet_name = st.text_input(
         "Nama Worksheet",
-        value="RekapSO",  # Diperbaiki dari RekapSo menjadi RekapSO
+        value="RekapSO",
         help="Pastikan nama worksheet sesuai dengan di Google Sheets."
     )
 
@@ -1348,17 +1348,16 @@ def clean_dataframe_for_display(df: pd.DataFrame) -> pd.DataFrame:
     if "Tanggal Stock Opname" in df_clean.columns:
         df_clean["Tanggal Stock Opname"] = df_clean["Tanggal Stock Opname"].dt.strftime("%Y-%m-%d")
     
-    # Ganti semua nilai NaN/None dengan nilai default
-    for col in df_clean.columns:
-        if df_clean[col].dtype == object:
-            # Untuk kolom string, ganti NaN dengan string kosong
-            df_clean[col] = df_clean[col].fillna('')
-        elif pd.api.types.is_numeric_dtype(df_clean[col]):
-            # Untuk kolom numerik, ganti NaN dengan 0
-            df_clean[col] = df_clean[col].fillna(0)
-        else:
-            # Untuk tipe data lain, konversi ke string dan ganti NaN
-            df_clean[col] = df_clean[col].astype(str).fillna('')
+    # Daftar kolom numerik
+    numeric_columns = df_clean.select_dtypes(include=[np.number]).columns
+    # Daftar kolom non-numerik
+    non_numeric_columns = df_clean.select_dtypes(exclude=[np.number]).columns
+    
+    # Untuk kolom non-numerik, ganti NaN dengan string kosong
+    df_clean[non_numeric_columns] = df_clean[non_numeric_columns].fillna('')
+    
+    # Untuk kolom numerik, ganti NaN dengan 0
+    df_clean[numeric_columns] = df_clean[numeric_columns].fillna(0)
     
     # Format kolom numerik khusus
     if "Selisih Qty (Pcs)" in df_clean.columns:
@@ -1394,8 +1393,11 @@ with st.expander("📄 Lihat Data Detail", expanded=False):
         st.error(f"Error menampilkan dataframe: {e}")
         st.info("Menampilkan data dalam format alternatif...")
         
-        # Alternatif: tampilkan sebagai CSV
-        csv_data = df_display.to_csv(index=False)
+        # Alternatif 1: tampilkan dengan st.table
+        st.table(df_display.head(100))  # Batasi untuk performa
+        
+        # Alternatif 2: berikan opsi download
+        csv_data = df_display.to_csv(index=False, encoding='utf-8')
         st.download_button(
             label="📥 Download Data sebagai CSV",
             data=csv_data,
