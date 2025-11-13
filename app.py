@@ -482,6 +482,12 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
     else:
         df["Tag"] = "Tidak Terdefinisi"
 
+    # Handle kolom Kategori
+    if "Kategori" in df.columns:
+        df["Kategori"] = df["Kategori"].replace("", "Tidak Terkategori").fillna("Tidak Terkategori")
+    else:
+        df["Kategori"] = "Tidak Terkategori"
+
     df["Varians Nilai Absolut"] = df["Selisih Value (Rp)"].abs()
     df["Varians Qty Absolut"] = df["Selisih Qty (Pcs)"].abs()
     df["Arah Varians"] = df["Selisih Value (Rp)"].apply(
@@ -655,8 +661,38 @@ def create_tag_analysis_chart(df: pd.DataFrame, metric: str) -> go.Figure:
         orientation="h",
         color="Varians",
         color_continuous_scale=[COLOR_NEGATIVE, COLOR_ACCENT, COLOR_SUCCESS],
-        labels={"Varians": label_metric, "Tag": "Kategori (Tag)"},
-        title="<b>Varians per Kategori (Tag)</b>",
+        labels={"Varians": label_metric, "Tag": "Tag"},
+        title="<b>Varians per Tag</b>",
+        height=520
+    )
+    fig.update_layout(title_x=0.5, yaxis=dict(categoryorder="total ascending"))
+    fig.add_vline(x=0, line_width=1, line_color="rgba(148,163,184,0.32)", line_dash="dot")
+    return fig
+
+
+def create_category_analysis_chart(df: pd.DataFrame, metric: str) -> go.Figure:
+    metric_column = "Selisih Value (Rp)" if metric == "Nilai (Rp)" else "Selisih Qty (Pcs)"
+    label_metric = "Total Varians Nilai (Rp)" if metric == "Nilai (Rp)" else "Total Varians Kuantitas (Pcs)"
+
+    category_analysis = (
+        df.groupby("Kategori")[metric_column]
+        .sum()
+        .rename("Varians")
+        .to_frame()
+        .assign(Varians_Absolut=lambda x: x["Varians"].abs())
+        .sort_values(by="Varians_Absolut", ascending=False)
+        .reset_index()
+    )
+
+    fig = px.bar(
+        category_analysis,
+        x="Varians",
+        y="Kategori",
+        orientation="h",
+        color="Varians",
+        color_continuous_scale=[COLOR_NEGATIVE, COLOR_ACCENT, COLOR_SUCCESS],
+        labels={"Varians": label_metric, "Kategori": "Kategori"},
+        title="<b>Varians per Kategori</b>",
         height=520
     )
     fig.update_layout(title_x=0.5, yaxis=dict(categoryorder="total ascending"))
@@ -1254,7 +1290,8 @@ tabs = st.tabs([
     "🔍 Analisis Data Mendalam",
     "🏆 Analisis Produk",
     "📈 Tren Waktu",
-    "🏷️ Analisis Kategori",
+    "🏷️ Analisis Tag",  # Diubah dari "Analisis Kategori"
+    "📊 Analisis Kategori",  # Tab baru untuk analisis kategori
     "🔍 Scatter Varians",
     "🗺️ Treemap"
 ])
@@ -1326,9 +1363,12 @@ with tabs[3]:
     st.plotly_chart(create_tag_analysis_chart(filtered_df, metric_selection), use_container_width=True)
 
 with tabs[4]:
-    st.plotly_chart(create_scatter_chart(filtered_df), use_container_width=True)
+    st.plotly_chart(create_category_analysis_chart(filtered_df, metric_selection), use_container_width=True)
 
 with tabs[5]:
+    st.plotly_chart(create_scatter_chart(filtered_df), use_container_width=True)
+
+with tabs[6]:
     st.plotly_chart(create_treemap_chart(filtered_df), use_container_width=True)
 
 st.divider()
@@ -1385,6 +1425,11 @@ def clean_dataframe_for_display(df: pd.DataFrame) -> pd.DataFrame:
 with st.expander("📄 Lihat Data Detail", expanded=False):
     # Gunakan fungsi pembersih dataframe yang baru
     df_display = clean_dataframe_for_display(filtered_df)
+    
+    # PERBAIKAN 3: Pastikan tidak ada nilai NaN yang tersisa
+    # Konversi semua kolom ke string untuk menghindari masalah JSON
+    for col in df_display.columns:
+        df_display[col] = df_display[col].astype(str)
     
     # Tampilkan dataframe dengan handling error
     try:
