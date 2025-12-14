@@ -435,6 +435,18 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
     }
     df.rename(columns=rename_map, inplace=True)
 
+    # PERBAIKAN: Pastikan kolom PLU ada
+    if "PLU" not in df.columns:
+        # Coba cari kolom dengan nama berbeda
+        for col in df.columns:
+            if "PLU" in col.upper() or "ITEM" in col.upper() or "KODE" in col.upper():
+                df.rename(columns={col: "PLU"}, inplace=True)
+                break
+    
+    # Jika PLU masih tidak ada, buat dari index
+    if "PLU" not in df.columns:
+        df["PLU"] = df.index.astype(str)
+
     if "Tanggal Stock Opname" not in df.columns:
         st.error("Kolom 'Tanggal Stock Opname' tidak ditemukan pada sheet.")
         return None
@@ -473,6 +485,7 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
 
     df.dropna(
         subset=["Tanggal Stock Opname", "Selisih Qty (Pcs)", "Selisih Value (Rp)"],
+        how='all',  # PERBAIKAN: hanya drop jika semua kolom ini NaN
         inplace=True
     )
 
@@ -573,6 +586,16 @@ def create_trend_chart(df: pd.DataFrame, metric: str) -> go.Figure:
     label_y = "Total Varians Nilai (Rp)" if metric == "Nilai (Rp)" else "Total Varians Kuantitas (Pcs)"
     min_date = df["Tanggal Stock Opname"].min()
     max_date = df["Tanggal Stock Opname"].max()
+    
+    if pd.isna(min_date) or pd.isna(max_date):
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Data tanggal tidak valid",
+            xref="paper", yref="paper", x=0.5, y=0.5, showarrow=False
+        )
+        fig.update_layout(title="<b>Tren Varians</b>", title_x=0.5)
+        return fig
+    
     date_range = (max_date - min_date).days
 
     if min_date.date() == max_date.date():
@@ -654,6 +677,18 @@ def create_tag_analysis_chart(df: pd.DataFrame, metric: str) -> go.Figure:
         .reset_index()
     )
 
+    if tag_analysis.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Data tag tidak ditemukan.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title="<b>Varians per Tag</b>", title_x=0.5)
+        return fig
+
     fig = px.bar(
         tag_analysis,
         x="Varians",
@@ -684,6 +719,18 @@ def create_category_analysis_chart(df: pd.DataFrame, metric: str) -> go.Figure:
         .reset_index()
     )
 
+    if category_analysis.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Data kategori tidak ditemukan.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title="<b>Varians per Kategori</b>", title_x=0.5)
+        return fig
+
     fig = px.bar(
         category_analysis,
         x="Varians",
@@ -701,15 +748,30 @@ def create_category_analysis_chart(df: pd.DataFrame, metric: str) -> go.Figure:
 
 
 def create_scatter_chart(df: pd.DataFrame) -> go.Figure:
+    if df.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Tidak ada data untuk scatter plot.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title="<b>Varians Kuantitas vs Nilai</b>", title_x=0.5)
+        return fig
+    
+    # PERBAIKAN: Hapus nilai NaN sebelum membuat scatter plot
+    scatter_df = df.dropna(subset=["Selisih Qty (Pcs)", "Selisih Value (Rp)"])
+    
     fig = px.scatter(
-        df,
+        scatter_df,
         x="Selisih Qty (Pcs)",
         y="Selisih Value (Rp)",
         hover_data=["PLU", "Nama Produk", "Tag"],
         color="Tag",
         color_discrete_sequence=PLOTLY_COLORWAY,
         title="<b>Varians Kuantitas vs Nilai</b>",
-        trendline="ols" if len(df) > 10 else None,
+        trendline="ols" if len(scatter_df) > 10 else None,
         height=520
     )
     fig.update_layout(title_x=0.5)
@@ -730,9 +792,39 @@ def create_treemap_chart(df: pd.DataFrame) -> go.Figure:
         )
         fig.update_layout(title="<b>Treemap Varians</b>", title_x=0.5)
         return fig
+    
+    # PERBAIKAN UTAMA: Filter data untuk menghindari error ZeroDivisionError
+    # Hapus baris dengan Varians Nilai Absolut = 0 atau NaN
+    treemap_df = df.copy()
+    treemap_df = treemap_df[treemap_df["Varians Nilai Absolut"] > 0]
+    treemap_df = treemap_df.dropna(subset=["Varians Nilai Absolut", "Selisih Value (Rp)", "Tag", "Nama Produk"])
+    
+    if treemap_df.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Tidak ada data varians positif untuk treemap.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title="<b>Treemap Varians</b>", title_x=0.5)
+        return fig
+    
+    # PERBAIKAN: Tambahkan handling untuk nilai yang terlalu kecil
+    # Pastikan tidak ada nilai nol pada Varians Nilai Absolut
+    treemap_df["Varians Nilai Absolut"] = treemap_df["Varians Nilai Absolut"].clip(lower=1e-9)
+    
+    # Batasi jumlah data untuk performa yang lebih baik
+    if len(treemap_df) > 1000:
+        treemap_df = treemap_df.nlargest(1000, "Varians Nilai Absolut")
+    
+    # PERBAIKAN: Tambahkan kolom ID unik untuk setiap produk
+    treemap_df["Produk_ID"] = treemap_df["PLU"].astype(str) + " - " + treemap_df["Nama Produk"]
+    
     fig = px.treemap(
-        df,
-        path=["Tag", "Nama Produk"],
+        treemap_df,
+        path=["Tag", "Produk_ID"],  # PERBAIKAN: Gunakan Produk_ID yang unik
         values="Varians Nilai Absolut",
         color="Selisih Value (Rp)",
         color_continuous_scale=[COLOR_NEGATIVE, "#94A3B8", COLOR_SUCCESS],
@@ -741,6 +833,13 @@ def create_treemap_chart(df: pd.DataFrame) -> go.Figure:
         height=520
     )
     fig.update_layout(title_x=0.5, margin=dict(t=80, l=30, r=30, b=30))
+    
+    # PERBAIKAN: Tambahkan custom data aggregation untuk menghindari error
+    fig.update_traces(
+        textinfo="label+value",
+        hovertemplate="<b>%{label}</b><br>Varians: %{value}<br>Nilai: %{color}<extra></extra>"
+    )
+    
     return fig
 
 
@@ -803,7 +902,7 @@ def highlight_insights(df: pd.DataFrame) -> None:
             kontribusi = (
                 tag_summary["Total Varians"].abs().iloc[0] /
                 tag_summary["Total Varians"].abs().sum() * 100
-            )
+            ) if tag_summary["Total Varians"].abs().sum() > 0 else 0  # PERBAIKAN: hindari pembagian nol
             render_insight_card(
                 title="Tag Dominan",
                 value=f"{top_tag}",
@@ -822,7 +921,7 @@ def highlight_insights(df: pd.DataFrame) -> None:
             row = biggest_positive.iloc[0]
             render_insight_card(
                 title="Varians Positif Tertinggi",
-                value=row["Nama Produk"],
+                value=row["Nama Produk"] if "Nama Produk" in row else "Produk",
                 description=f"Selisih nilai {format_currency(row['Selisih Value (Rp)'])} • {format_quantity(row['Selisih Qty (Pcs)'])} pcs.",
                 icon="📈"
             )
@@ -839,7 +938,7 @@ def highlight_insights(df: pd.DataFrame) -> None:
             row = biggest_negative.iloc[0]
             render_insight_card(
                 title="Varians Negatif Terbesar",
-                value=row["Nama Produk"],
+                value=row["Nama Produk"] if "Nama Produk" in row else "Produk",
                 description=f"Selisih nilai {format_currency(row['Selisih Value (Rp)'])} • {format_quantity(row['Selisih Qty (Pcs)'])} pcs.",
                 icon="📉"
             )
@@ -860,20 +959,39 @@ def highlight_insights(df: pd.DataFrame) -> None:
 
         if outlier_count > 0:
             with st.expander("Lihat detail outlier"):
-                st.dataframe(
-                    outliers_value[["PLU", "Nama Produk", "Selisih Value (Rp)", "Selisih Qty (Pcs)", "Tag"]],
-                    use_container_width=True
-                )
+                # PERBAIKAN: Pastikan kolom yang ditampilkan ada
+                display_cols = []
+                for col in ["PLU", "Nama Produk", "Selisih Value (Rp)", "Selisih Qty (Pcs)", "Tag"]:
+                    if col in outliers_value.columns:
+                        display_cols.append(col)
+                
+                if display_cols:
+                    st.dataframe(
+                        outliers_value[display_cols],
+                        use_container_width=True
+                    )
 
 # =========================================================
 # ------------------- FUNGSI DATA PROFILING -----------------
 # =========================================================
 def create_distribution_chart(df: pd.DataFrame, column: str) -> go.Figure:
+    if column not in df.columns or df[column].isna().all():
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Kolom '{column}' tidak tersedia atau semua nilai kosong.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title=f"<b>Distribusi {column}</b>", title_x=0.5)
+        return fig
+    
     fig = go.Figure()
     
     # Histogram
     fig.add_trace(go.Histogram(
-        x=df[column],
+        x=df[column].dropna(),
         nbinsx=30,
         name='Distribusi',
         marker_color=COLOR_PRIMARY,
@@ -882,25 +1000,27 @@ def create_distribution_chart(df: pd.DataFrame, column: str) -> go.Figure:
     
     # Mean line
     mean_val = df[column].mean()
-    fig.add_vline(
-        x=mean_val, 
-        line_width=2, 
-        line_dash="dash", 
-        line_color=COLOR_ACCENT,
-        annotation_text=f"Mean: {mean_val:.2f}",
-        annotation_position="top right"
-    )
+    if not pd.isna(mean_val):
+        fig.add_vline(
+            x=mean_val, 
+            line_width=2, 
+            line_dash="dash", 
+            line_color=COLOR_ACCENT,
+            annotation_text=f"Mean: {mean_val:.2f}",
+            annotation_position="top right"
+        )
     
     # Median line
     median_val = df[column].median()
-    fig.add_vline(
-        x=median_val, 
-        line_width=2, 
-        line_dash="dash", 
-        line_color=COLOR_WARNING,
-        annotation_text=f"Median: {median_val:.2f}",
-        annotation_position="top left"
-    )
+    if not pd.isna(median_val):
+        fig.add_vline(
+            x=median_val, 
+            line_width=2, 
+            line_dash="dash", 
+            line_color=COLOR_WARNING,
+            annotation_text=f"Median: {median_val:.2f}",
+            annotation_position="top left"
+        )
     
     fig.update_layout(
         title=f"<b>Distribusi {column}</b>",
@@ -913,10 +1033,22 @@ def create_distribution_chart(df: pd.DataFrame, column: str) -> go.Figure:
     return fig
 
 def create_box_plot(df: pd.DataFrame, column: str) -> go.Figure:
+    if column not in df.columns or df[column].isna().all():
+        fig = go.Figure()
+        fig.add_annotation(
+            text=f"Kolom '{column}' tidak tersedia atau semua nilai kosong.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title=f"<b>Box Plot {column}</b>", title_x=0.5)
+        return fig
+    
     fig = go.Figure()
     
     fig.add_trace(go.Box(
-        y=df[column],
+        y=df[column].dropna(),
         name=column,
         marker_color=COLOR_PRIMARY,
         boxpoints='outliers'
@@ -935,7 +1067,7 @@ def create_correlation_matrix(df: pd.DataFrame) -> go.Figure:
     # Select only numeric columns
     numeric_df = df.select_dtypes(include=[np.number])
     
-    if numeric_df.empty:
+    if numeric_df.empty or len(numeric_df.columns) < 2:
         fig = go.Figure()
         fig.add_annotation(
             text="Tidak ada kolom numerik untuk analisis korelasi.",
@@ -981,7 +1113,7 @@ def create_data_quality_report(df: pd.DataFrame) -> pd.DataFrame:
         'Total Nilai Null': df.isnull().sum().values,
         '% Nilai Null': (df.isnull().sum() / len(df) * 100).round(2).values,
         'Total Nilai Unik': df.nunique().values,
-        'Nilai Paling Sering': [df[col].mode()[0] if not df[col].mode().empty else '-' for col in df.columns]
+        'Nilai Paling Sering': [df[col].mode()[0] if not df[col].mode().empty and len(df[col].dropna()) > 0 else '-' for col in df.columns]
     })
     
     return report
@@ -1021,7 +1153,19 @@ def create_feature_importance_chart(df: pd.DataFrame) -> go.Figure:
     corr_with_target = numeric_df.corr()[target_col].abs().sort_values(ascending=False)
     
     # Remove target itself
-    corr_with_target = corr_with_target.drop(target_col)
+    corr_with_target = corr_with_target.drop(target_col, errors='ignore')
+    
+    if corr_with_target.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Tidak ada fitur numerik lain untuk dianalisis.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title="<b>Importance Fitur</b>", title_x=0.5)
+        return fig
     
     # Create bar chart
     fig = go.Figure(data=go.Bar(
@@ -1172,7 +1316,7 @@ with st.sidebar:
         for key in ("date_range", "tags", "direction"):
             if key in st.session_state:
                 del st.session_state[key]
-        st.experimental_rerun()
+        st.rerun()
 
 # =========================================================
 # ---------------------- MAIN APP -------------------------
@@ -1197,6 +1341,13 @@ with st.spinner("Memuat dan memproses data dari Google Sheets..."):
 
 if dataframe is None or dataframe.empty:
     st.error("Tidak ada data yang dapat diproses. Periksa kembali sumber data Anda.")
+    st.stop()
+
+# PERBAIKAN: Tangani tanggal yang tidak valid
+dataframe = dataframe[~dataframe["Tanggal Stock Opname"].isna()]
+
+if dataframe.empty:
+    st.error("Data tanggal tidak valid. Periksa format tanggal pada data sumber.")
     st.stop()
 
 min_date = dataframe["Tanggal Stock Opname"].min().to_pydatetime()
@@ -1251,6 +1402,9 @@ negative_value = filtered_df.loc[filtered_df["Selisih Value (Rp)"] < 0, "Selisih
 positive_qty = filtered_df.loc[filtered_df["Selisih Qty (Pcs)"] > 0, "Selisih Qty (Pcs)"].sum()
 negative_qty = filtered_df.loc[filtered_df["Selisih Qty (Pcs)"] < 0, "Selisih Qty (Pcs)"].sum()
 
+# PERBAIKAN: Hindari pembagian nol
+avg_value_per_plu = total_value / total_plu if total_plu > 0 else 0
+
 metric_container = st.container()
 with metric_container:
     st.markdown('<div class="metric-grid">', unsafe_allow_html=True)
@@ -1275,7 +1429,7 @@ with metric_container:
     )
     render_metric_card(
         "Rata-rata Varians Nilai per PLU",
-        format_currency(total_value / total_plu if total_plu else 0),
+        format_currency(avg_value_per_plu),
         icon="📊"
     )
     st.markdown('</div>', unsafe_allow_html=True)
@@ -1290,8 +1444,8 @@ tabs = st.tabs([
     "🔍 Analisis Data Mendalam",
     "🏆 Analisis Produk",
     "📈 Tren Waktu",
-    "🏷️ Analisis Tag",  # Diubah dari "Analisis Kategori"
-    "📊 Analisis Kategori",  # Tab baru untuk analisis kategori
+    "🏷️ Analisis Tag",
+    "📊 Analisis Kategori",
     "🔍 Scatter Varians",
     "🗺️ Treemap"
 ])
@@ -1348,10 +1502,13 @@ with tabs[0]:
     # Statistical Summary
     with st.expander("📊 Ringkasan Statistik", expanded=False):
         numeric_cols = filtered_df.select_dtypes(include=[np.number]).columns
-        stats_summary = filtered_df[numeric_cols].describe().T
-        stats_summary['skew'] = filtered_df[numeric_cols].skew()
-        stats_summary['kurtosis'] = filtered_df[numeric_cols].kurtosis()
-        st.dataframe(stats_summary, use_container_width=True)
+        if len(numeric_cols) > 0:
+            stats_summary = filtered_df[numeric_cols].describe().T
+            stats_summary['skew'] = filtered_df[numeric_cols].skew()
+            stats_summary['kurtosis'] = filtered_df[numeric_cols].kurtosis()
+            st.dataframe(stats_summary, use_container_width=True)
+        else:
+            st.info("Tidak ada kolom numerik untuk analisis statistik.")
 
 with tabs[1]:
     st.plotly_chart(create_top_products_chart(filtered_df, metric_selection, top_n), use_container_width=True)
@@ -1369,14 +1526,30 @@ with tabs[5]:
     st.plotly_chart(create_scatter_chart(filtered_df), use_container_width=True)
 
 with tabs[6]:
-    st.plotly_chart(create_treemap_chart(filtered_df), use_container_width=True)
+    # PERBAIKAN: Tambahkan penanganan error untuk treemap
+    try:
+        st.plotly_chart(create_treemap_chart(filtered_df), use_container_width=True)
+    except Exception as e:
+        st.error(f"Error saat membuat treemap: {str(e)}")
+        st.info("Mencoba metode alternatif...")
+        
+        # Alternatif: tampilkan chart sederhana sebagai pengganti
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Treemap tidak dapat ditampilkan. Data mungkin memiliki masalah format.",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(color="#CBD5F5", size=16)
+        )
+        fig.update_layout(title="<b>Treemap Varians</b>", title_x=0.5)
+        st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
 
 # =========================================================
 # ------------------- TABEL DETAIL ------------------------
 # =========================================================
-# PERBAIKAN 2: Fungsi untuk membersihkan dataframe dari NaN dan masalah JSON
 def clean_dataframe_for_display(df: pd.DataFrame) -> pd.DataFrame:
     """Membersihkan dataframe untuk ditampilkan di Streamlit"""
     df_clean = df.copy()
@@ -1426,8 +1599,7 @@ with st.expander("📄 Lihat Data Detail", expanded=False):
     # Gunakan fungsi pembersih dataframe yang baru
     df_display = clean_dataframe_for_display(filtered_df)
     
-    # PERBAIKAN 3: Pastikan tidak ada nilai NaN yang tersisa
-    # Konversi semua kolom ke string untuk menghindari masalah JSON
+    # PERBAIKAN: Pastikan tidak ada nilai NaN yang tersisa
     for col in df_display.columns:
         df_display[col] = df_display[col].astype(str)
     
@@ -1442,12 +1614,15 @@ with st.expander("📄 Lihat Data Detail", expanded=False):
         st.table(df_display.head(100))  # Batasi untuk performa
         
         # Alternatif 2: berikan opsi download
-        csv_data = df_display.to_csv(index=False, encoding='utf-8')
-        st.download_button(
-            label="📥 Download Data sebagai CSV",
-            data=csv_data,
-            file_name="data_varians_stok.csv",
-            mime="text/csv"
-        )
+        try:
+            csv_data = df_display.to_csv(index=False, encoding='utf-8')
+            st.download_button(
+                label="📥 Download Data sebagai CSV",
+                data=csv_data,
+                file_name="data_varians_stok.csv",
+                mime="text/csv"
+            )
+        except Exception as e2:
+            st.error(f"Error membuat file CSV: {e2}")
 
 st.caption("© 2025 – Dashboard Varians Stok Opname • Dibangun dengan Streamlit + Plotly • Desain futuristic-glassmorphism")
