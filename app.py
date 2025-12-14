@@ -506,16 +506,6 @@ def load_data(spreadsheet_url: str, sheet_name: str) -> Optional[pd.DataFrame]:
     df["Arah Varians"] = df["Selisih Value (Rp)"].apply(
         lambda val: "Positif" if val > 0 else ("Negatif" if val < 0 else "Netral")
     )
-    
-    # PERBAIKAN: Hapus semua NaN dari dataframe
-    df = df.replace([np.nan, pd.NA, pd.NaT], None)
-    
-    # Konversi semua kolom ke string untuk menghindari masalah JSON
-    for col in df.columns:
-        if df[col].dtype == 'object':
-            df[col] = df[col].fillna('').astype(str)
-        else:
-            df[col] = df[col].fillna(0)
 
     return df
 
@@ -1115,18 +1105,15 @@ def create_correlation_matrix(df: pd.DataFrame) -> go.Figure:
     return fig
 
 def create_data_quality_report(df: pd.DataFrame) -> pd.DataFrame:
-    # PERBAIKAN: Ganti semua NaN dengan string kosong untuk JSON
-    df_clean = df.replace([np.nan, pd.NA], None)
-    
     # Create a data quality report
     report = pd.DataFrame({
-        'Kolom': df_clean.columns,
-        'Tipe Data': df_clean.dtypes.values,
-        'Total Nilai Non-Null': df_clean.count().values,
-        'Total Nilai Null': df_clean.isnull().sum().values,
-        '% Nilai Null': (df_clean.isnull().sum() / len(df_clean) * 100).round(2).values,
-        'Total Nilai Unik': df_clean.nunique().values,
-        'Nilai Paling Sering': [df_clean[col].mode()[0] if not df_clean[col].mode().empty and len(df_clean[col].dropna()) > 0 else '-' for col in df_clean.columns]
+        'Kolom': df.columns,
+        'Tipe Data': df.dtypes.values,
+        'Total Nilai Non-Null': df.count().values,
+        'Total Nilai Null': df.isnull().sum().values,
+        '% Nilai Null': (df.isnull().sum() / len(df) * 100).round(2).values,
+        'Total Nilai Unik': df.nunique().values,
+        'Nilai Paling Sering': [df[col].mode()[0] if not df[col].mode().empty and len(df[col].dropna()) > 0 else '-' for col in df.columns]
     })
     
     return report
@@ -1469,9 +1456,7 @@ with tabs[0]:
     # Data Quality Report
     with st.expander("📋 Laporan Kualitas Data", expanded=True):
         quality_report = create_data_quality_report(filtered_df)
-        # PERBAIKAN: Ganti NaN dengan None untuk JSON
-        quality_report_clean = quality_report.where(pd.notnull(quality_report), None)
-        st.dataframe(quality_report_clean, use_container_width=True)
+        st.dataframe(quality_report, use_container_width=True)
     
     # Distribution Charts
     col1, col2 = st.columns(2)
@@ -1521,8 +1506,6 @@ with tabs[0]:
             stats_summary = filtered_df[numeric_cols].describe().T
             stats_summary['skew'] = filtered_df[numeric_cols].skew()
             stats_summary['kurtosis'] = filtered_df[numeric_cols].kurtosis()
-            # PERBAIKAN: Ganti NaN dengan None
-            stats_summary = stats_summary.where(pd.notnull(stats_summary), None)
             st.dataframe(stats_summary, use_container_width=True)
         else:
             st.info("Tidak ada kolom numerik untuk analisis statistik.")
@@ -1578,8 +1561,16 @@ def clean_dataframe_for_display(df: pd.DataFrame) -> pd.DataFrame:
     if "Tanggal Stock Opname" in df_clean.columns:
         df_clean["Tanggal Stock Opname"] = df_clean["Tanggal Stock Opname"].dt.strftime("%Y-%m-%d")
     
-    # Ganti semua NaN/NaT/None dengan string kosong
-    df_clean = df_clean.fillna('')
+    # Daftar kolom numerik
+    numeric_columns = df_clean.select_dtypes(include=[np.number]).columns
+    # Daftar kolom non-numerik
+    non_numeric_columns = df_clean.select_dtypes(exclude=[np.number]).columns
+    
+    # Untuk kolom non-numerik, ganti NaN dengan string kosong
+    df_clean[non_numeric_columns] = df_clean[non_numeric_columns].fillna('')
+    
+    # Untuk kolom numerik, ganti NaN dengan 0
+    df_clean[numeric_columns] = df_clean[numeric_columns].fillna(0)
     
     # Format kolom numerik khusus
     if "Selisih Qty (Pcs)" in df_clean.columns:
@@ -1602,15 +1593,15 @@ def clean_dataframe_for_display(df: pd.DataFrame) -> pd.DataFrame:
             lambda x: format_quantity(x) if isinstance(x, (int, float)) else str(x)
         )
     
-    # Pastikan semua nilai adalah string untuk menghindari masalah JSON
-    for col in df_clean.columns:
-        df_clean[col] = df_clean[col].astype(str)
-    
     return df_clean
 
 with st.expander("📄 Lihat Data Detail", expanded=False):
     # Gunakan fungsi pembersih dataframe yang baru
     df_display = clean_dataframe_for_display(filtered_df)
+    
+    # PERBAIKAN: Pastikan tidak ada nilai NaN yang tersisa
+    for col in df_display.columns:
+        df_display[col] = df_display[col].astype(str)
     
     # Tampilkan dataframe dengan handling error
     try:
